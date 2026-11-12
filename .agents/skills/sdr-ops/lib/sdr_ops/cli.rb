@@ -45,6 +45,8 @@ module SdrOps
                  files replace DRUID FILE PATH [--mimetype T] | files remove DRUID FILE... [--drop-empty-file-sets]
                  files set DRUID FILE [--mimetype T] [--use U] [--preserve B] [--shelve B] [--publish B]
       Collections: collection add|remove COLLECTION_DRUID DRUID...
+      Clone:     clone DRUID --apo DRUID [--from prod] [--source public|dsa] [--collection DRUID] [--tag TAG]
+                 [--skip-unavailable] [--keep-open]   (into --env stage or qa)
       Register:  register --title TEXT --apo DRUID [--type object] [--source-id ID] [--collection DRUID] [--tag TAG]
                  [--view V --download D] [--accession]
         (files add/replace/remove/set and collection need --open "VERSION DESCRIPTION" [--keep-open],
@@ -112,6 +114,7 @@ module SdrOps
       when 'check' then check
       when 'collection' then collection
       when 'register' then register
+      when 'clone' then clone_object
       when 'run' then run_script
       when 'push' then push
       when 'pull' then pull
@@ -517,6 +520,25 @@ module SdrOps
 
       context.registration.register(**options, tags:)
       @output.info('DRY RUN: nothing was registered. Re-run with --execute.') if context.dry_run?
+      EXIT[:ok]
+    end
+
+    def clone_object
+      tags = []
+      options = parse do |opts, o|
+        opts.on('--apo DRUID', 'APO in the target environment') { o[:apo] = it }
+        opts.on('--from ENV', 'source environment (default prod)') { o[:from] = it }
+        opts.on('--source SOURCE', 'public (purl, default) or dsa (head version; needs a login there)') { o[:source] = it }
+        opts.on('--collection DRUID') { o[:collection] = it }
+        opts.on('--tag TAG') { tags << it }
+        opts.on('--skip-unavailable', "leave out files that can't be fetched") { o[:skip_unavailable] = true }
+        opts.on('--keep-open', "don't close version 1 (no accessioning yet)") { o[:keep_open] = true }
+      end
+      druid = @argv.shift || raise(UsageError, 'clone needs a source DRUID')
+      raise UsageError, 'clone needs --apo (an APO in the target environment)' unless options[:apo]
+
+      context.cloner.clone_from(druid, **options, tags:)
+      @output.info('DRY RUN: nothing was downloaded or created. Re-run with --execute.') if context.dry_run?
       EXIT[:ok]
     end
 

@@ -8,7 +8,7 @@ module SdrOps
 
     def initialize(env:, execute: false, as: nil, reason: nil, ticket: nil, run_dir: nil, host: 'accession',
                    limit: nil, max_failures: 3, format: 'jsonl', output: Output.new, shell: Shell.new,
-                   transport: nil, credentials: nil, client: nil)
+                   transport: nil, credentials: nil, client: nil, transports: {}, credentials_by_env: {})
       @environment = SdrOps.environment(env)
       @execute = execute ? true : false
       @explicit_as = as
@@ -25,6 +25,8 @@ module SdrOps
       @transport = transport
       @credentials = credentials
       @client = client
+      @transports = transports
+      @credentials_by_env = credentials_by_env
       @states = {}
       @planned = Set.new
     end
@@ -39,6 +41,19 @@ module SdrOps
 
     def credentials
       @credentials ||= Credentials.new(environment:, shell: @shell)
+    end
+
+    # Another environment's transport and credentials (e.g. the source of a clone).
+    def transport_for(other)
+      return transport if other.name == environment.name
+
+      @transports[other.name] ||= Transport.new(environment: other, shell: @shell)
+    end
+
+    def credentials_for(other)
+      return credentials if other.name == environment.name
+
+      @credentials_by_env[other.name] ||= Credentials.new(environment: other, shell: @shell)
     end
 
     # The SUNet ID actions are attributed to: --as, else the Kerberos principal.
@@ -129,6 +144,7 @@ module SdrOps
     def collections = (@collections ||= Collections.new(self))
     def find = (@find ||= Find.new(self))
     def registration = (@registration ||= Registration.new(self))
+    def cloner = (@cloner ||= Cloner.new(self))
 
     private
 

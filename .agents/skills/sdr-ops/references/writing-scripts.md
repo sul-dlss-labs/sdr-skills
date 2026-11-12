@@ -42,6 +42,7 @@ end
 - `sdr.workflows`: `run(druid, wf, version:, lane:)`, `set(druid, wf, step, status, expect:, note:)`, `reset(druid, wf, step)`, `skip_all(druid, wf, note:)`, `check(druid, 'WF:complete')` (returns a hash).
 - `sdr.collections`: `add(druid, collection)`, `remove(druid, collection)`.
 - `sdr.registration.register(apo:, title: | description:, geographic:, source_id:, type:, collection:, tags:, view:, download:, accession:)`, where `description:` is a full cocina description hash (e.g. copied from another object, minus `purl`), returns the new druid (nil in a dry run). The run owns the new object's version 1, so `sdr.files.add` can follow before `sdr.versions.close`.
+- `sdr.cloner.clone_from(druid, apo:, from: 'prod', source: 'public', collection:, tags:, skip_unavailable:, keep_open:)` returns the clone's druid (stage or qa only).
 - `sdr.read` (read-only):
   - `status(druid)`
   - `cocina(druid, version:, public:)` — the cocina as a hash; `public: true` reads purl's copy

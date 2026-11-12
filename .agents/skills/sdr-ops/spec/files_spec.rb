@@ -175,7 +175,7 @@ RSpec.describe SdrOps::Files do
       transport.script_results = [{ 'filepath' => 'rail.dbf', 'path' => '/tmp/x/rail.dbf' }]
       transport.downloads['/tmp/x/rail.dbf'] = 'corrupted'
       expect { context.files.fetch(druid, ['rail.dbf'], to: File.join(@tmpdir, 'dl')) }
-        .to raise_error(SdrOps::Error, /doesn't match cocina/)
+        .to raise_error(SdrOps::Error, /downloaded md5 .* doesn't match cocina/)
     end
 
     it 'only plans in a dry run' do

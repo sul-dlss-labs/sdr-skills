@@ -2,7 +2,7 @@
 
 Agent skills for accessioning and remediating content in the Stanford Digital Repository (SDR). This is a prototype: [PLAN.md](PLAN.md) has the goals, and [DESIGN.md](DESIGN.md) has the design.
 
-There is one skill so far, **[sdr-ops](.agents/skills/sdr-ops/SKILL.md)**: a command-line tool and Ruby library for finding objects, checking and changing versions and workflows, fetching preserved files, changing files in structural metadata, changing collection membership, and registering new (e.g. test) objects. Task-specific remediation is a short script the agent generates that calls into `sdr-ops`.
+There is one skill so far, **[sdr-ops](.agents/skills/sdr-ops/SKILL.md)**: a command-line tool and Ruby library for finding objects, checking and changing versions and workflows, fetching preserved files, changing files in structural metadata, changing collection membership, registering new objects, and cloning prod objects into stage for testing. Task-specific remediation is a short script the agent generates that calls into `sdr-ops`.
 
 ## Using it
 

@@ -33,7 +33,7 @@ sdr-skills/
       batch.rb                   # druid list/CSV input, limits, per-item error capture
       object_state.rb            # per-object working copy (cocina + version status), planned changes in dry runs
       ledger.rb  output.rb  shell.rb  druid.rb  environments.rb  errors.rb
-      inspect.rb  find.rb  versions.rb  workflows.rb  files.rb  collections.rb  registration.rb
+      inspect.rb  find.rb  versions.rb  workflows.rb  files.rb  collections.rb  registration.rb  cloner.rb  downloads.rb
     remote/                      # the only code that runs on servers
       mint_token.rb              # DSA host: issue a short-lived token
       find.rb                    # DSA host: read-only Solr / workflow-table queries
@@ -291,6 +291,12 @@ This applies to `files …` and `collection …`:
 |---|---|
 | `register --title TEXT --apo DRUID [--type object] [--source-id ID] [--collection DRUID] [--tag TAG]... [--view V --download D] [--accession]` | Registers an item the way Argo does: DSA registration with the user's name, a `Registered By : <sunet>` tag (plus any `--tag`), and registrationWF for version 1. `--source-id` defaults to `sdr-ops:<sunet>-<timestamp>`; access defaults to the APO's. The run owns the new object's version 1 (the ledger records the registration), so files can be added before accessioning. `--accession` closes version 1 right away, starting accessionWF. |
 
+### Cloning
+
+| Command | Behaviour |
+|---|---|
+| `clone DRUID --apo DRUID [--from prod] [--source public\|dsa] [--collection DRUID] [--tag TAG]... [--skip-unavailable] [--keep-open]` | Recreates an item from another environment (default prod) in stage or qa (`--env prod` is refused), for rehearsing remediations. Copies type, object access, description (minus purl), geographic metadata, and structural metadata (file set order/labels/types and every per-file attribute; new identifiers) in one cocina update. Bytes come from source stacks when world-downloadable, otherwise source preservation via a workspace host, each checked against cocina's size, md5, and sha1 before anything is created. `--source public` reads purl (no source login); `dsa` reads the source's head version (needs a login there). Closes version 1 (accessionWF only) unless `--keep-open`. See `references/cloning.md`. |
+
 ### Scripts and transfers
 
 | Command | Behaviour |
@@ -309,7 +315,7 @@ This applies to `files …` and `collection …`:
 | Update the state of a workflow or step | `workflow set/reset/skip-all` |
 | Invoke a workflow for one or more objects | `workflow run` (with batch input) |
 | Add or remove an object from a collection | `collection add/remove` |
-| (not in PLAN.md) Create test objects | `register` |
+| (not in PLAN.md) Create test objects | `register`, `clone` |
 | Reports on files/file types and on descriptive metadata | Separate `sdr-reports` skill later (see below) |
 
 ## Library API for generated scripts
@@ -334,7 +340,7 @@ SdrOps.batch(ARGV.fetch(0)) do |row, sdr|
 end
 ```
 
-The library objects (`sdr.versions`, `sdr.workflows`, `sdr.files`, `sdr.collections`, `sdr.registration`, `sdr.read`, `sdr.find`) expose the same operations, preconditions, and options as the subcommands; the command-line interface is a thin layer over them. Read-only lookups are `sdr.read` rather than `sdr.inspect`, because `inspect` is `Object#inspect`.
+The library objects (`sdr.versions`, `sdr.workflows`, `sdr.files`, `sdr.collections`, `sdr.registration`, `sdr.cloner`, `sdr.read`, `sdr.find`) expose the same operations, preconditions, and options as the subcommands; the command-line interface is a thin layer over them. Read-only lookups are `sdr.read` rather than `sdr.inspect`, because `inspect` is `Object#inspect`.
 - The block form `versions.open(druid, description:) { … }` opens a version for the block and closes it afterwards; `keep_open: true` leaves it open.
 - Content changes inside the block are allowed because this run opened that version. Content calls made outside any version the run opened stop the item, just as the commands do.
 

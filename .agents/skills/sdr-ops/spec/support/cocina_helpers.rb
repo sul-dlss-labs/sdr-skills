@@ -10,7 +10,7 @@ module CocinaHelpers
     {
       type: Cocina::Models::ObjectType.file,
       externalIdentifier: "https://cocina.sul.stanford.edu/file/bc641kr2427-abc123/#{name}",
-      label: name, filename: name, size: 10, version:, hasMimeType: mimetype, use:, sdrGeneratedText: sdr_generated,
+      label: name, filename: name, size: name.bytesize, version:, hasMimeType: mimetype, use:, sdrGeneratedText: sdr_generated,
       hasMessageDigests: [{ type: 'sha1', digest: Digest::SHA1.hexdigest(name) },
                           { type: 'md5', digest: Digest::MD5.hexdigest(name) }],
       access: { view:, download: },

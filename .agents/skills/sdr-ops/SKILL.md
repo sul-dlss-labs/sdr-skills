@@ -4,7 +4,7 @@ description: >-
   Inspect and change objects in the Stanford Digital Repository (SDR): find objects by
   workflow state or search facets, check version and workflow status, open/close/discard
   versions, run or reset workflows, fetch preserved files, add/remove/replace files in
-  structural metadata, change collection membership, and register new (e.g. test) objects. Use for remediation work on
+  structural metadata, change collection membership, register new objects, and clone prod objects into stage or qa for testing. Use for remediation work on
   SDR druids, including one-off scripts that operate on batches of objects.
 ---
 
@@ -44,6 +44,7 @@ Global options can go anywhere: `--env`, `--execute`, `--run DIR`, `--druids FIL
 | Files | `files fetch`, `files add`, `files replace`, `files remove`, `files set` | [files.md](references/files.md) |
 | Collections | `collection add/remove COLLECTION DRUID...` | needs `--open` like files |
 | New objects | `register --title TEXT --apo DRUID [--type object] [--accession]` | [registration.md](references/registration.md) |
+| Test copies | `clone DRUID --apo DRUID [--from prod]` (into stage or qa) | [cloning.md](references/cloning.md) |
 | One-off work | `run SCRIPT.rb ARGS`, plus `push`, `pull`, `exec --` | [writing-scripts.md](references/writing-scripts.md) |
 
 **Content changes** (`files add/replace/remove/set`, `collection`) happen only in a version this run opened. Pass `--open "Version description"`, and the command opens a version, makes the change, and closes it (which starts accessioning). Add `--keep-open` to keep adding changes to that version or to run a workflow in it. If the object already has an open version that this run didn't open, the item stops and reports who opened it.

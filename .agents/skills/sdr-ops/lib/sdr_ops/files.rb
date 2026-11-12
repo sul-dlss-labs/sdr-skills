@@ -363,19 +363,9 @@ module SdrOps
       file.administrative.shelve && file.access.download == 'world'
     end
 
-    def fetch_from_preservation(druid, files, plan, version)
-      remote_root = "#{@context.scratch_dir}/fetch-#{SecureRandom.hex(4)}"
-      request = { druid:, version:, dest: remote_root,
-                  files: files.map { |file| { filepath: file.filename, md5: md5_of(file) } } }
-      records = transport.app_ruby(@context.host, File.join(REMOTE_DIR, 'fetch_preserved.rb'),
-                                   env: { 'SDR_OPS_FETCH' => JSON.generate(request) })
-      records.each do |record|
-        item = plan.find { it[:filename] == record['filepath'] }
-        transport.get_file(@context.host, remote_path: record['path'], local_path: item[:local_path])
-        verify_local!(item)
-      end
-    ensure
-      transport.remove_remote(@context.host, remote_root) if remote_root
+    def fetch_from_preservation(druid, _files, plan, version)
+      Downloads.from_preservation(transport, profile: @context.host, scratch_dir: @context.scratch_dir, druid:,
+                                             items: plan, version:)
     end
 
     def fetch_from_workspace(druid, _files, plan, _version)
@@ -387,40 +377,7 @@ module SdrOps
     end
 
     def fetch_from_stacks(druid, _files, plan, version)
-      plan.each do |item|
-        escaped = item[:filename].split('/').map { ERB::Util.url_encode(it) }.join('/')
-        base = @context.environment.stacks_url
-        path = version ? "v2/file/#{Druid.bare(druid)}/version/#{version}/#{escaped}" : "file/#{Druid.bare(druid)}/#{escaped}"
-        http_download("#{base}/#{path}", item[:local_path])
-        verify_local!(item)
-      end
-    end
-
-    def verify_local!(item)
-      actual = Digest::MD5.file(item[:local_path]).hexdigest
-      return item[:verified] = true if item[:md5].nil? || actual == item[:md5]
-
-      FileUtils.rm_f(item[:local_path])
-      raise Error, "#{item[:filename]}: downloaded md5 #{actual} doesn't match cocina (#{item[:md5]})"
-    end
-
-    def http_download(url, local_path, redirects: 5)
-      uri = URI(url)
-      FileUtils.mkdir_p(File.dirname(local_path))
-      Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https') do |http|
-        http.request(Net::HTTP::Get.new(uri)) do |response|
-          case response
-          when Net::HTTPSuccess
-            File.open(local_path, 'wb') { |file| response.read_body { |chunk| file.write(chunk) } }
-          when Net::HTTPRedirection
-            raise Error, "Too many redirects fetching #{url}" if redirects.zero?
-
-            return http_download(URI.join(url, response['location']).to_s, local_path, redirects: redirects - 1)
-          else
-            raise Error, "#{url} returned HTTP #{response.code}"
-          end
-        end
-      end
+      Downloads.from_stacks(@context.environment, druid, plan, version:)
     end
 
     # The bytes for a new or replaced file: a local path or a string.
