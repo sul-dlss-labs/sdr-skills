@@ -58,6 +58,16 @@ RSpec.describe SdrOps::Registration do
     expect(emitted.last['details']).to eq('opened_by' => 'jdoe')
   end
 
+  it 'registers with a full description and geographic metadata (e.g. copied from another object)' do
+    description = { title: [{ value: 'Municipal Boundaries' }], note: [{ value: 'copied' }],
+                    language: [{ code: 'por', source: { code: 'iso639-2b' } }] }
+    register_with = context.registration.register(apo:, description:, geographic: { iso19139: '<rdf:RDF/>' }, type: 'geo')
+    request = dsa.calls_for(:register).first.last[:request]
+    expect(request.description.note.first.value).to eq 'copied'
+    expect(request.geographic.iso19139).to eq '<rdf:RDF/>'
+    expect(register_with).to start_with('druid:')
+  end
+
   it 'rejects unknown types, missing titles, and invalid access' do
     expect { register(type: 'collection') }.to raise_error(SdrOps::UsageError, /--type must be one of/)
     expect { context.registration.register(title: ' ', apo:) }.to raise_error(SdrOps::UsageError, /title/)

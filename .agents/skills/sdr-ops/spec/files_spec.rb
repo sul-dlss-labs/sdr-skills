@@ -92,6 +92,36 @@ RSpec.describe SdrOps::Files do
     end
   end
 
+  describe '#add with explicit attributes' do
+    it 'uses explicit access, sdrGeneratedText, and short file set type names' do
+      context.versions.open(druid, description: 'x') do |state|
+        context.files.add(druid, filename: 'preview.jpg', content: 'jpg', new_file_set: 'Preview', file_set_type: 'preview',
+                                 mimetype: 'image/jpeg', use: 'master', preserve: true, shelve: true, publish: true,
+                                 access: { view: 'world', download: 'world' }, sdr_generated_text: true)
+        preview = state.cocina.structural.contains.last
+        expect(preview.type).to eq Cocina::Models::FileSetType.preview
+        file = preview.structural.contains.first
+        expect(file.access.to_h).to include(view: 'world', download: 'world')
+        expect(file.sdrGeneratedText).to be true
+      end
+    end
+
+    it 'rejects unknown file set types and invalid access' do
+      context.versions.open(druid, description: 'x') do
+        expect do
+          context.files.add(druid, filename: 'a.txt', content: 'a', new_file_set: 'X', file_set_type: 'bogus',
+                                   preserve: true, shelve: true, publish: true)
+        end
+          .to raise_error(SdrOps::UsageError, /File set type must be one of/)
+        expect do
+          context.files.add(druid, filename: 'a.txt', content: 'a', like: 'rail.dbf',
+                                   access: { view: 'stanford', download: 'world' })
+        end
+          .to raise_error(SdrOps::UsageError, /Invalid cocina: .*access/)
+      end
+    end
+  end
+
   describe '#replace / #remove / #set' do
     it 'replaces digests and size but keeps the identifier' do
       original = all_files(dsa.record(druid).cocina).find { it.filename == 'rail.prj' }

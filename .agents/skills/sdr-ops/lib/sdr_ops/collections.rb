@@ -28,7 +28,14 @@ module SdrOps
       raise Skip, "#{state.druid} is #{operation == :add ? 'already' : 'not'} in #{collection}" if updated == current
 
       @context.ensure_mutations_allowed!
-      new_cocina = state.cocina.new(structural: state.cocina.structural.new(isMemberOf: updated))
+      new_cocina = SdrOps.valid_cocina! { state.cocina.new(structural: state.cocina.structural.new(isMemberOf: updated)) }
+      description = save(state, new_cocina)
+      @context.report(druid: state.druid, action: "collection.#{operation}", result: @context.execute? ? 'ok' : 'planned',
+                      args: { collection: }, before: { isMemberOf: current }, after: { isMemberOf: updated },
+                      details: { description: })
+    end
+
+    def save(state, new_cocina)
       description = @context.description(@context.reason || state.description)
       if @context.execute?
         state.cocina = @context.client.object(state.druid).update(params: new_cocina, user_name: @context.as,
@@ -37,9 +44,7 @@ module SdrOps
         state.cocina = new_cocina
         @context.mark_planned(state.druid)
       end
-      @context.report(druid: state.druid, action: "collection.#{operation}", result: @context.execute? ? 'ok' : 'planned',
-                      args: { collection: }, before: { isMemberOf: current }, after: { isMemberOf: updated },
-                      details: { description: })
+      description
     end
   end
 end

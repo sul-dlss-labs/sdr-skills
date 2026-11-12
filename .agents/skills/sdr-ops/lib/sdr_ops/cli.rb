@@ -475,6 +475,9 @@ module SdrOps
       opts.on('--shelve BOOL', TrueClass) { options[:shelve] = it }
       opts.on('--publish BOOL', TrueClass) { options[:publish] = it }
       opts.on('--access-from-object') { options[:access_from_object] = true }
+      opts.on('--view VIEW', 'file access view; use with --download') { (options[:access] ||= {})[:view] = it }
+      opts.on('--download DOWNLOAD') { (options[:access] ||= {})[:download] = it }
+      opts.on('--sdr-generated BOOL', TrueClass) { options[:sdr_generated_text] = it }
     end
 
     # Parses --open/--keep-open plus a command's own options.

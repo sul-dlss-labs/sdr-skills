@@ -33,7 +33,7 @@ end
   - It ends with a summary.
 - `sdr.versions`: `open(druid, description:, keep_open: false) { |state| … }`, `close(druid, description: nil, accession: true, user_versions: nil, lane: nil)`, `discard(druid)`.
 - `sdr.files`:
-  - `add(druid, path: | content:, filename:, like:, file_set:, new_file_set:, mimetype:, use:, preserve:, shelve:, publish:, access_from_object:)`
+  - `add(druid, path: | content:, filename:, like:, file_set:, new_file_set:, file_set_type:, mimetype:, use:, preserve:, shelve:, publish:, access_from_object:, access:, sdr_generated_text:)` — `access:` is a file access hash (e.g. `{ view: 'world', download: 'world' }`); `file_set_type:` takes short names (`object`, `preview`, `image`, `file`, …)
   - `replace(druid, filename, path: | content:, mimetype:)`
   - `remove(druid, [filenames], drop_empty_file_sets:)`
   - `set(druid, filename, …)`
@@ -41,7 +41,7 @@ end
   - `list(druid, workspace:)`
 - `sdr.workflows`: `run(druid, wf, version:, lane:)`, `set(druid, wf, step, status, expect:, note:)`, `reset(druid, wf, step)`, `skip_all(druid, wf, note:)`, `check(druid, 'WF:complete')` (returns a hash).
 - `sdr.collections`: `add(druid, collection)`, `remove(druid, collection)`.
-- `sdr.registration.register(title:, apo:, source_id:, type:, collection:, tags:, view:, download:, accession:)` returns the new druid (nil in a dry run). The run owns the new object's version 1, so `sdr.files.add` can follow before `sdr.versions.close`.
+- `sdr.registration.register(apo:, title: | description:, geographic:, source_id:, type:, collection:, tags:, view:, download:, accession:)`, where `description:` is a full cocina description hash (e.g. copied from another object, minus `purl`), returns the new druid (nil in a dry run). The run owns the new object's version 1, so `sdr.files.add` can follow before `sdr.versions.close`.
 - `sdr.read` (read-only):
   - `status(druid)`
   - `cocina(druid, version:, public:)` — the cocina as a hash; `public: true` reads purl's copy

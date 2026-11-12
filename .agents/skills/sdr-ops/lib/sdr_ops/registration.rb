@@ -15,11 +15,13 @@ module SdrOps
       @context = context
     end
 
+    # `description:` (a cocina description hash) replaces the title-only description; `geographic:` is for geo items.
     # @return [String, nil] the new druid (nil in a dry run)
-    def register(title:, apo:, source_id: nil, type: 'object', collection: nil, tags: [], view: nil, download: nil,
-                 workflow: 'registrationWF', accession: false)
-      request = build_request(title:, apo:, source_id: source_id || default_source_id, type:, collection:, view:,
-                              download:)
+    # `access:` (a full cocina access hash) overrides `view:`/`download:`.
+    def register(apo:, title: nil, description: nil, geographic: nil, source_id: nil, type: 'object', collection: nil,
+                 tags: [], view: nil, download: nil, access: nil, workflow: 'registrationWF', accession: false)
+      request = build_request(title:, description:, geographic:, apo:, source_id: source_id || default_source_id, type:,
+                              collection:, view:, download:, access:)
       tags = ["#{REGISTERED_BY_PREFIX}#{@context.as}", *tags].uniq
       args = { source_id: request.identification.sourceId, apo: request.administrative.hasAdminPolicy, type:,
                collection: request.structural.isMemberOf.first, tags:, workflow:, accession: }.compact
@@ -28,29 +30,30 @@ module SdrOps
       @context.ensure_mutations_allowed!
       druid = create(request, tags:, workflow:)
       @context.report(druid:, action: 'object.register', result: 'ok', args:, after: { version: 1, open: true },
-                      details: { title: })
+                      details: { title: request.description.title.first&.value })
       @context.versions.close(druid) if accession
       druid
     end
 
-    def build_request(title:, apo:, source_id:, type:, collection:, view:, download:)
-      raise UsageError, 'A title is required' if title.to_s.strip.empty?
+    def build_request(apo:, source_id:, type:, collection:, view:, download:, title: nil, description: nil,
+                      geographic: nil, access: nil)
+      raise UsageError, 'A title (or a description) is required' if title.to_s.strip.empty? && description.nil?
       raise UsageError, "--view must be one of #{VIEWS.join(', ')}" if view && !VIEWS.include?(view)
       raise UsageError, "--download must be one of #{DOWNLOADS.join(', ')}" if download && !DOWNLOADS.include?(download)
 
-      access = { view:, download: }.compact
-      Cocina::Models::RequestDRO.new({
-        type: Cocina::Models::ObjectType.public_send(item_type!(type)),
-        version: 1,
-        administrative: { hasAdminPolicy: Druid.normalize(apo) },
-        identification: { sourceId: source_id },
-        description: { title: [{ value: title }] },
-        access: access.empty? ? nil : access,
-        structural: { contains: [], isMemberOf: collection ? [Druid.normalize(collection)] : [] }
-      }.compact)
-    # cocina-models 0.133.0's validator can raise TypeError while formatting some errors.
-    rescue Cocina::Models::ValidationError, Dry::Struct::Error, TypeError => e
-      raise UsageError, "Invalid registration: #{e.message}"
+      access ||= { view:, download: }.compact
+      SdrOps.valid_cocina!('registration') do
+        Cocina::Models::RequestDRO.new({
+          type: Cocina::Models::ObjectType.public_send(item_type!(type)),
+          version: 1,
+          administrative: { hasAdminPolicy: Druid.normalize(apo) },
+          identification: { sourceId: source_id },
+          description: description || { title: [{ value: title }] },
+          geographic:,
+          access: access.empty? ? nil : access,
+          structural: { contains: [], isMemberOf: collection ? [Druid.normalize(collection)] : [] }
+        }.compact)
+      end
     end
 
     private
@@ -72,7 +75,12 @@ module SdrOps
       nil
     end
 
+    # Accepts short names (object, geo, three_dimensional, …) or full type URIs.
     def item_type!(type)
+      if type.to_s.start_with?('https://')
+        by_uri = ITEM_TYPES.find { Cocina::Models::ObjectType.public_send(it) == type }
+        return by_uri if by_uri
+      end
       name = type.to_s.tr('-', '_')
       return name if ITEM_TYPES.include?(name)
 

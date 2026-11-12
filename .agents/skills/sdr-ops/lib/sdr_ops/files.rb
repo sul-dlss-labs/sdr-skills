@@ -17,6 +17,8 @@ module SdrOps
       '.jpeg' => 'image/jpeg', '.png' => 'image/png', '.pdf' => 'application/pdf', '.zip' => 'application/zip'
     }.freeze
     FETCH_SOURCES = %w[preservation workspace stacks].freeze
+    FILE_SET_TYPES = %w[attachment audio document file image media object page preview three_dimensional thumb
+                        video].freeze
 
     def initialize(context)
       @context = context
@@ -35,9 +37,10 @@ module SdrOps
       end
     end
 
+    # `access:` (a file access hash) and `sdr_generated_text:` override what would be copied from `like:`.
     def add(druid, path: nil, content: nil, filename: nil, like: nil, file_set: nil, new_file_set: nil,
             file_set_type: nil, mimetype: nil, use: nil, preserve: nil, shelve: nil, publish: nil,
-            access_from_object: false)
+            access_from_object: false, access: nil, sdr_generated_text: false)
       state = @context.fresh_state(druid)
       @context.versions.require_own_version!(state)
       source = Source.new(path:, content:)
@@ -47,7 +50,7 @@ module SdrOps
       template = like && find_file!(state, like)
       target = target_file_set(state, like:, file_set:, new_file_set:, file_set_type:)
       file = build_file(state, target:, filename:, source:, template:, mimetype:, use:, preserve:, shelve:, publish:,
-                               access_from_object:)
+                               access_from_object:, access:, sdr_generated_text:)
       new_cocina = with_file_set(state.cocina, target.new(structural: target.structural.new(
         contains: target.structural.contains + [file]
       )))
@@ -80,13 +83,13 @@ module SdrOps
 
         fs.new(structural: fs.structural.new(contains: kept))
       end
-      new_cocina = state.cocina.new(structural: state.cocina.structural.new(contains: file_sets))
+      new_cocina = SdrOps.valid_cocina! { state.cocina.new(structural: state.cocina.structural.new(contains: file_sets)) }
       change(state, 'files.remove', new_cocina, args: { filenames:, drop_empty_file_sets: })
     end
 
     # Change attributes of one file. `use: 'none'` removes the use.
     def set(druid, filename, mimetype: nil, use: nil, preserve: nil, shelve: nil, publish: nil,
-            access_from_object: false)
+            access_from_object: false, access: nil, sdr_generated_text: nil)
       state = @context.fresh_state(druid)
       @context.versions.require_own_version!(state)
       existing = find_file!(state, filename)
@@ -100,13 +103,15 @@ module SdrOps
       admin = attributes[:administrative].merge({ sdrPreserve: preserve, shelve:, publish: }.compact)
       attributes[:administrative] = admin
       attributes[:access] = object_file_access(state.cocina) if access_from_object
+      attributes[:access] = access if access
+      attributes[:sdrGeneratedText] = sdr_generated_text unless sdr_generated_text.nil?
       require_workspace_bytes!(state, existing, reason: 'turning preserve on') if preserve && !existing.administrative.sdrPreserve
-      updated = Cocina::Models::File.new(attributes)
+      updated = build_cocina_file(attributes)
       raise Skip, "#{state.druid} #{filename}: nothing to change" if updated == existing
 
       new_cocina = map_files(state.cocina) { |file| file.filename == filename ? updated : file }
       change(state, 'files.set', new_cocina, args: { filename:, mimetype:, use:, preserve:, shelve:, publish:,
-                                                     access_from_object: }.compact)
+                                                     access_from_object:, access:, sdr_generated_text: }.compact)
     end
 
     # Download files (default: all applicable) for one druid into `to` (default <run>/downloads/<druid>).
@@ -139,6 +144,19 @@ module SdrOps
 
     def self.file_set_id(druid)
       "#{ID_NAMESPACE}/fileSet/#{Druid.bare(druid)}-#{SecureRandom.uuid}"
+    end
+
+    def self.file_set_type(type)
+      return Cocina::Models::FileSetType.file if type.nil?
+      return type if type.start_with?('https://')
+
+      name = type.tr('-', '_')
+      unless FILE_SET_TYPES.include?(name)
+        raise UsageError,
+              "File set type must be one of #{FILE_SET_TYPES.join(', ')} (got #{type.inspect})"
+      end
+
+      Cocina::Models::FileSetType.public_send(name)
     end
 
     # Same derivation as DSA's Cocina::IdGenerator, so new file IDs look like the ones DSA mints.
@@ -187,7 +205,7 @@ module SdrOps
     end
 
     def build_file(state, target:, filename:, source:, template:, mimetype:, use:, preserve:, shelve:, publish:,
-                   access_from_object:)
+                   access_from_object:, access:, sdr_generated_text:)
       base = template ? template.administrative.to_h : {}
       administrative = { publish: pick(publish, base[:publish]), sdrPreserve: pick(preserve, base[:sdrPreserve]),
                          shelve: pick(shelve, base[:shelve]) }
@@ -195,7 +213,8 @@ module SdrOps
 
       use = template&.use if use.nil?
       use = nil if use == 'none'
-      Cocina::Models::File.new({
+      access ||= template && !access_from_object ? template.access.to_h : object_file_access(state.cocina)
+      build_cocina_file({
         type: Cocina::Models::ObjectType.file,
         externalIdentifier: self.class.file_id(state.druid, target.externalIdentifier),
         label: filename,
@@ -203,12 +222,16 @@ module SdrOps
         size: source.size,
         version: state.version,
         hasMimeType: mimetype || source.mimetype(filename),
-        sdrGeneratedText: false,
+        sdrGeneratedText: sdr_generated_text,
         hasMessageDigests: source.digests,
-        access: template && !access_from_object ? template.access.to_h : object_file_access(state.cocina),
+        access:,
         administrative:,
         use:
       }.compact)
+    end
+
+    def build_cocina_file(attributes)
+      SdrOps.valid_cocina!("file attributes for #{attributes[:filename]}") { Cocina::Models::File.new(attributes) }
     end
 
     def pick(explicit, default)
@@ -230,7 +253,7 @@ module SdrOps
     end
 
     def new_file_set(state, label, type)
-      Cocina::Models::FileSet.new(type: type || Cocina::Models::FileSetType.file,
+      Cocina::Models::FileSet.new(type: self.class.file_set_type(type),
                                   externalIdentifier: self.class.file_set_id(state.druid), label:,
                                   version: state.version, structural: { contains: [] })
     end
@@ -240,6 +263,10 @@ module SdrOps
     end
 
     def with_file_set(cocina, file_set)
+      SdrOps.valid_cocina! { with_file_set_unchecked(cocina, file_set) }
+    end
+
+    def with_file_set_unchecked(cocina, file_set)
       contains = cocina.structural.contains
       replaced = contains.map { |fs| fs.externalIdentifier == file_set.externalIdentifier ? file_set : fs }
       replaced << file_set unless contains.any? { |fs| fs.externalIdentifier == file_set.externalIdentifier }

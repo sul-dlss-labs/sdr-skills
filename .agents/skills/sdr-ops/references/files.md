@@ -39,7 +39,7 @@
 ## Commands
 
 - `files DRUID [--workspace]` lists the files. With `--workspace`, it also checks over ssh whether each one is in the workspace and whether the md5 matches.
-- `files add DRUID PATH... --like FILE --open "…"` adds files. In scripts, `content:` (a string) can stand in for a path.
+- `files add DRUID PATH... --like FILE --open "…"` adds files. `--view`/`--download` set the file's access explicitly, `--sdr-generated true` marks robot-style derivatives, and `--new-file-set LABEL --file-set-type preview` (short names: object, preview, image, file, page, …) creates a file set. In scripts, `content:` (a string) can stand in for a path.
 - `files replace DRUID FILE PATH --open "…"` replaces a file's bytes: same identifier and attributes, new size and digests.
 - `files remove DRUID FILE... [--drop-empty-file-sets] --open "…"` removes files from structural metadata. Preservation keeps earlier versions' files; the file is absent from the next published version.
 - `files set DRUID FILE [--mimetype] [--use] [--preserve] [--shelve] [--publish] [--access-from-object] --open "…"` changes attributes. Turning preserve on requires the bytes in the workspace.

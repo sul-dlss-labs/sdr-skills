@@ -56,5 +56,13 @@ module SdrOps
     def batch(input, &)
       Batch.new(context).run(input, &)
     end
+
+    # Build cocina, turning validation failures into a UsageError that names what was being built.
+    # (cocina-models 0.133.0's validator can also raise TypeError while formatting some errors.)
+    def valid_cocina!(what = 'cocina')
+      yield
+    rescue Cocina::Models::ValidationError, Dry::Struct::Error, TypeError => e
+      raise UsageError, "Invalid #{what}: #{e.message}"
+    end
   end
 end
