@@ -291,6 +291,7 @@ This applies to `files …` and `collection …`:
 |---|---|
 | `register --title TEXT --apo DRUID [--type object] [--source-id ID] [--collection DRUID] [--tag TAG]... [--view V --download D] [--accession]` | Registers an item the way Argo does: DSA registration with the user's name, a `Registered By : <sunet>` tag (plus any `--tag`), and registrationWF for version 1. `--source-id` defaults to `sdr-ops:<sunet>-<timestamp>`; access defaults to the APO's. The run owns the new object's version 1 (the ledger records the registration), so files can be added before accessioning. `--accession` closes version 1 right away, starting accessionWF. |
 
+### Scripts and transfers
 
 | Command | Behaviour |
 |---|---|
