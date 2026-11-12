@@ -4,6 +4,11 @@ module SdrOps
   # File downloads shared by `files fetch` and `clone`. Items are Hashes with :filename and :local_path, plus the
   # expected :md5 and optionally :sha1 and :size; every download is verified against whichever are present.
   module Downloads
+    # An HTTP 404.
+    class NotFound < Error; end
+
+    STACKS_CACHE_MINUTES = 10
+
     module_function
 
     def stacks_url(environment, druid, filename, version: nil)
@@ -18,7 +23,24 @@ module SdrOps
       items.each do |item|
         http(stacks_url(environment, druid, item[:filename], version:), item[:local_path])
         verify!(item)
+      rescue NotFound => e
+        raise explain_stacks_not_found(environment, druid, item[:filename], e)
       end
+    end
+
+    # Stacks caches each object's public cocina for 10 minutes (stacks app/models/cocina.rb), so a file added in a
+    # version published since stacks last served the object 404s until that copy expires. Say so when purl lists it.
+    def explain_stacks_not_found(environment, druid, filename, error)
+      published = json("#{environment.purl_url}/#{Druid.bare(druid)}.json")
+      files = published&.dig('structural', 'contains')&.flat_map { it.dig('structural', 'contains') } || []
+      return error unless files.any? { it['filename'] == filename }
+
+      Error.new("Stacks returned 404 for #{filename}, but purl's published version #{published['version']} lists it. " \
+                "Stacks caches each object's public cocina for #{STACKS_CACHE_MINUTES} minutes, so files from a " \
+                'version published since stacks last served this object can 404 until that copy expires. ' \
+                "Retry within #{STACKS_CACHE_MINUTES} minutes, or fetch preserved files with --source preservation.")
+    rescue Error
+      error
     end
 
     # Through a workspace host's robot app, which can reach preservation (prod preservation only accepts API
@@ -76,8 +98,8 @@ module SdrOps
             raise Error, "Too many redirects fetching #{url}" if redirects.zero?
 
             return http(URI.join(url, response['location']).to_s, local_path, redirects: redirects - 1)
-          else
-            raise Error, "#{url} returned HTTP #{response.code}"
+          when Net::HTTPNotFound then raise NotFound, "#{url} returned HTTP 404"
+          else raise Error, "#{url} returned HTTP #{response.code}"
           end
         end
       end

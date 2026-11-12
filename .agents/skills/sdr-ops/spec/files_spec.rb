@@ -185,6 +185,28 @@ RSpec.describe SdrOps::Files do
       expect(emitted.last['details']['files'].map { it['filename'] }).to eq %w[rail.shp rail.dbf rail.prj]
     end
 
+    context 'when stacks returns 404 for a world-downloadable file' do
+      let(:dsa) do
+        files = shapefile_hashes.map { it.merge(access: { view: 'world', download: 'world' }) }
+        FakeDsa.new.add(build_dro(files:))
+      end
+      let(:published) { Cocina::Models.without_metadata(dsa.record(druid).cocina).to_json }
+
+      before { stub_request(:get, 'https://stacks-stage.stanford.edu/file/bc641kr2427/rail.fgb').to_return(status: 404) }
+
+      it "explains stacks' cocina cache when purl's published version lists the file" do
+        stub_request(:get, 'https://sul-purl-stage.stanford.edu/bc641kr2427.json').to_return(body: published)
+        expect { context.files.fetch(druid, ['rail.fgb'], source: 'stacks', to: File.join(@tmpdir, 'dl')) }
+          .to raise_error(SdrOps::Error, /purl's published version 1 lists it.*caches each object's public cocina for 10 minutes/)
+      end
+
+      it 'reports a plain 404 when the file is not in the published version' do
+        stub_request(:get, 'https://sul-purl-stage.stanford.edu/bc641kr2427.json').to_return(status: 404)
+        expect { context.files.fetch(druid, ['rail.fgb'], source: 'stacks', to: File.join(@tmpdir, 'dl')) }
+          .to raise_error(SdrOps::Downloads::NotFound, /returned HTTP 404/)
+      end
+    end
+
     it 'refuses stacks downloads of files that are not world-downloadable' do
       expect { context.files.fetch(druid, ['rail.dbf'], source: 'stacks') }.to raise_error(SdrOps::Skip, /world-downloadable/)
     end
