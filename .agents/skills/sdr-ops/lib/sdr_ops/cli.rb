@@ -43,6 +43,10 @@ module SdrOps
                  files add DRUID PATH... [--filename N] [--like FILE | --file-set ID | --new-file-set LABEL] [--mimetype T]
                        [--use U] [--preserve B] [--shelve B] [--publish B] [--access-from-object]
                  files replace DRUID FILE PATH [--mimetype T] | files remove DRUID FILE... [--drop-empty-file-sets]
+                 files move DRUID [FILE...] [--from FILESET]... --to FILESET [--position N] [--drop-empty-file-sets]
+      File sets: filesets DRUID... | filesets add DRUID --label L [--type T] [--position N]
+                 filesets set DRUID FILESET [--label L] [--type T] | filesets remove DRUID FILESET... [--with-files]
+                 filesets order DRUID FILESET...   (FILESET = ID or label; with --druids, omit DRUID)
                  files set DRUID FILE [--mimetype T] [--use U] [--preserve B] [--shelve B] [--publish B]
       Collections: collection add|remove COLLECTION_DRUID DRUID...
       Clone:     clone DRUID --apo DRUID [--from prod] [--source public|dsa] [--collection DRUID] [--tag TAG]
@@ -106,6 +110,7 @@ module SdrOps
       when 'status' then each_druid(summary: false) { |druid| context.output.emit(context.read.status(druid)) }
       when 'show' then show
       when 'files' then files
+      when 'filesets' then filesets
       when 'workflows' then list_workflows
       when 'events' then events
       when 'find' then find
@@ -383,6 +388,7 @@ module SdrOps
       when 'add' then @argv.shift && files_add
       when 'replace' then @argv.shift && files_replace
       when 'remove' then @argv.shift && files_remove
+      when 'move' then @argv.shift && files_move
       when 'set' then @argv.shift && files_set
       else files_list
       end
@@ -448,6 +454,22 @@ module SdrOps
       end
     end
 
+    def files_move
+      from = []
+      version_options, options = content_options do |opts, o|
+        opts.on('--to FILESET', 'file set ID or label to move into') { o[:to] = it }
+        opts.on('--from FILESET', 'move every file of this file set (repeatable)') { from << it }
+        opts.on('--position N', Integer, '1-based position in the target (default: last)') { o[:position] = it }
+        opts.on('--drop-empty-file-sets', 'remove file sets the move leaves empty') { o[:drop_empty_file_sets] = true }
+      end
+      raise UsageError, 'files move needs --to FILESET' unless options[:to]
+
+      druids, filenames = druids_and_args
+      each_druid(druids, single: true) do |druid|
+        with_content_version(druid, **version_options) { context.files.move(druid, filenames, from:, **options) }
+      end
+    end
+
     def files_set
       version_options, options = content_options { |opts, o| file_attribute_options(opts, o) }
       druid, filename = @argv
@@ -456,6 +478,55 @@ module SdrOps
       each_druid([druid], single: true) do |d|
         with_content_version(d, **version_options) { context.files.set(d, filename, **options) }
       end
+    end
+
+    def filesets
+      case @argv.first
+      when 'add', 'set', 'remove', 'order' then filesets_change(@argv.shift)
+      else
+        rows = []
+        code = each_druid(summary: false) { |druid| rows.concat(context.file_sets.list(druid)) }
+        emit_rows(rows)
+        code
+      end
+    end
+
+    def filesets_change(sub)
+      version_options, options = content_options do |opts, o|
+        if %w[add set].include?(sub)
+          opts.on('--label LABEL') { o[:label] = it }
+          opts.on('--type TYPE', 'file set type, e.g. object, file, image, preview') { o[:type] = it }
+        end
+        opts.on('--position N', Integer, '1-based (default: last)') { o[:position] = it } if sub == 'add'
+        opts.on('--with-files', 'also remove the files in them') { o[:with_files] = true } if sub == 'remove'
+      end
+      druids, refs = druids_and_args
+      each_druid(druids, single: true) do |druid|
+        with_content_version(druid, **version_options) { filesets_apply(sub, druid, refs, options) }
+      end
+    end
+
+    def filesets_apply(sub, druid, refs, options)
+      case sub
+      when 'add'
+        raise UsageError, 'filesets add needs --label' unless options[:label]
+
+        context.file_sets.add(druid, **options)
+      when 'set'
+        raise UsageError, 'filesets set needs FILESET' unless refs.size == 1
+
+        context.file_sets.update(druid, refs.first, **options)
+      when 'remove' then context.file_sets.remove(druid, refs, **options)
+      when 'order' then context.file_sets.order(druid, refs)
+      end
+    end
+
+    # With --druids FILE, all positional arguments belong to the command; otherwise the first is the druid.
+    def druids_and_args
+      return [druids_from([]), @argv] if @druids_file
+
+      druid = @argv.shift || raise(UsageError, 'Give a DRUID (or --druids FILE)')
+      [[druid], @argv]
     end
 
     def collection

@@ -48,6 +48,28 @@
   - `workspace` covers files the robots have already staged, e.g. after `fetch-files` ran.
   - `stacks` covers only world-downloadable shelved files.
 
+## File sets
+
+File sets (`structural.contains`) are referred to by ID or label; a label matching more than one file set is an error, so `filesets add` refuses duplicate labels. All changes need a version this run opened (`--open`), like other content changes. With `--druids FILE`, leave out DRUID and the same operation applies to every object, which is handy when many objects share a layout.
+
+- `filesets DRUID...` lists position, ID, label, type, and files.
+- `files move DRUID [FILE...] [--from FILESET]... --to FILESET [--position N] [--drop-empty-file-sets]` moves files into a file set:
+  - named files, and/or every file of each `--from` set, in order;
+  - inserted at the 1-based `--position` (default last), so moving within one file set reorders it;
+  - files keep their identifiers and attributes;
+  - `--drop-empty-file-sets` removes the file sets the move leaves empty.
+- `filesets add DRUID --label L [--type T] [--position N]` adds an empty file set. Types: object, file, image, page, preview, document, media, audio, video, attachment, thumb, three_dimensional.
+- `filesets set DRUID FILESET [--label L] [--type T]` renames or retypes one.
+- `filesets remove DRUID FILESET... [--with-files]` removes file sets. Ones with files are refused unless `--with-files`, which removes those files too.
+- `filesets order DRUID FILESET...` reorders; name every file set exactly once.
+
+For example, to collapse a geo object's Data/Preview/Metadata file sets into one:
+
+```
+sdr-ops --env stage --run DIR files move DRUID --from Preview --from Metadata --to Data --drop-empty-file-sets \
+  --open "Consolidate files into a single file set"
+```
+
 ## Geo conventions
 
 - A geo object has a single file set (`resources/object`) with every file in it.

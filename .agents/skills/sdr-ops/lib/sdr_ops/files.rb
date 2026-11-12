@@ -87,6 +87,31 @@ module SdrOps
       change(state, 'files.remove', new_cocina, args: { filenames:, drop_empty_file_sets: })
     end
 
+    # Move files into a file set (by ID or label): named files, and/or every file of the `from:` file sets, in
+    # order, inserted at `position` (1-based; default last). Moving within one file set reorders it. Files keep
+    # their identifiers and attributes. `drop_empty_file_sets:` removes file sets the move leaves empty.
+    def move(druid, filenames = [], to:, from: [], position: nil, drop_empty_file_sets: false)
+      state = @context.fresh_state(druid)
+      @context.versions.require_own_version!(state)
+      target = @context.file_sets.find!(state, to)
+      names = (filenames + from.flat_map { @context.file_sets.find!(state, it).structural.contains.map(&:filename) }).uniq
+      raise UsageError, 'Name files to move, or --from file sets' if names.empty?
+
+      sets = state.cocina.structural.contains
+      new_sets = rearrange(sets, names.map { find_file!(state, it) }, target, position, drop_empty_file_sets)
+      raise Skip, "#{state.druid}: nothing would change" if new_sets == sets
+
+      save_file_sets(state, 'files.move', new_sets, args: { files: names, to: target.externalIdentifier, position:,
+                                                            drop_empty_file_sets: }.compact)
+    end
+
+    # Save a new list of file sets (used by FileSets too), reporting the layout before and after.
+    def save_file_sets(state, action, file_sets, args:)
+      before = file_set_summary(state.cocina.structural.contains)
+      new_cocina = SdrOps.valid_cocina! { state.cocina.new(structural: state.cocina.structural.new(contains: file_sets)) }
+      change(state, action, new_cocina, args:, details: { before:, after: file_set_summary(file_sets) })
+    end
+
     # Change attributes of one file. `use: 'none'` removes the use.
     def set(druid, filename, mimetype: nil, use: nil, preserve: nil, shelve: nil, publish: nil,
             access_from_object: false, access: nil, sdr_generated_text: nil)
@@ -242,10 +267,7 @@ module SdrOps
       file_sets = state.cocina.structural.contains
       return file_set_containing(file_sets, like) if like
 
-      if file_set
-        return file_sets.find { |fs| fs.externalIdentifier == file_set || fs.label == file_set } ||
-               raise(Skip, "#{state.druid} has no file set #{file_set.inspect}")
-      end
+      return @context.file_sets.find!(state, file_set) if file_set
       return new_file_set(state, new_file_set, file_set_type || file_sets.first&.type) if new_file_set
       return file_sets.first if file_sets.one?
 
@@ -256,6 +278,23 @@ module SdrOps
       Cocina::Models::FileSet.new(type: self.class.file_set_type(type),
                                   externalIdentifier: self.class.file_set_id(state.druid), label:,
                                   version: state.version, structural: { contains: [] })
+    end
+
+    # Take `moving` out of every file set, insert it into `target` at `position`, and optionally drop file sets
+    # the move emptied.
+    def rearrange(sets, moving, target, position, drop_empty)
+      emptied = sets.select { |fs| fs.structural.contains.any? { moving.include?(it) } }.map(&:externalIdentifier)
+      sets.filter_map do |fs|
+        files = fs.structural.contains - moving
+        files = FileSets.insert(files, moving, position).flatten(1) if fs.externalIdentifier == target.externalIdentifier
+        next if drop_empty && files.empty? && emptied.include?(fs.externalIdentifier)
+
+        fs.new(structural: fs.structural.new(contains: files))
+      end
+    end
+
+    def file_set_summary(file_sets)
+      file_sets.map { { label: it.label, type: it.type.split('/').last, files: it.structural.contains.map(&:filename) } }
     end
 
     def file_set_containing(file_sets, filename)

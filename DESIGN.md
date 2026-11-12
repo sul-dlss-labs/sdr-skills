@@ -33,7 +33,7 @@ sdr-skills/
       batch.rb                   # druid list/CSV input, limits, per-item error capture
       object_state.rb            # per-object working copy (cocina + version status), planned changes in dry runs
       ledger.rb  output.rb  shell.rb  druid.rb  environments.rb  errors.rb
-      inspect.rb  find.rb  versions.rb  workflows.rb  files.rb  collections.rb  registration.rb  cloner.rb  downloads.rb
+      inspect.rb  find.rb  versions.rb  workflows.rb  files.rb  file_sets.rb  collections.rb  registration.rb  cloner.rb  downloads.rb
     remote/                      # the only code that runs on servers
       mint_token.rb              # DSA host: issue a short-lived token
       find.rb                    # DSA host: read-only Solr / workflow-table queries
@@ -278,6 +278,14 @@ This applies to `files …` and `collection …`:
 | `files replace FILENAME PATH` | Keeps the existing entry's identifier and attributes, stages the new bytes the same way, and updates size and digests. |
 | `files remove FILENAME...` | Removes entries from structural metadata. Empty file sets are kept unless `--drop-empty-file-sets` is given. |
 | `files set FILENAME [--mimetype] [--use] [--preserve/--shelve/--publish] [--access-from-object]` | Changes attributes, e.g. the `.ovr` mimetype fix. Turning preserve on requires the bytes to be present in the workspace. |
+| `files move [FILE...] [--from FILESET]... --to FILESET [--position N] [--drop-empty-file-sets]` | Moves named files and/or whole file sets' contents into a file set (by ID or label) at a position; moving within one file set reorders it. Identifiers and attributes don't change. `--drop-empty-file-sets` removes file sets the move empties. |
+
+### File sets
+
+| Command | Behaviour |
+|---|---|
+| `filesets DRUID...` | Lists file sets: position, ID, label, type, files. |
+| `filesets add --label L [--type T] [--position N]` / `filesets set FILESET [--label L] [--type T]` / `filesets remove FILESET... [--with-files]` / `filesets order FILESET...` | Adds (unique labels), renames/retypes, removes (refusing ones with files unless `--with-files`), and reorders (every file set named once) file sets. Version handling is as for files. With `--druids FILE`, the same operation applies to every object. |
 
 ### Collections
 
@@ -309,7 +317,7 @@ This applies to `files …` and `collection …`:
 
 | PLAN.md skill | sdr-ops |
 |---|---|
-| Add/remove/modify files and update structural metadata | `files add/replace/remove/set` |
+| Add/remove/modify files and update structural metadata | `files add/replace/remove/set/move`, `filesets` |
 | Roll back an open version | `version discard` |
 | Fetch files from preservation and download them locally | `files fetch` |
 | Update the state of a workflow or step | `workflow set/reset/skip-all` |
@@ -340,7 +348,7 @@ SdrOps.batch(ARGV.fetch(0)) do |row, sdr|
 end
 ```
 
-The library objects (`sdr.versions`, `sdr.workflows`, `sdr.files`, `sdr.collections`, `sdr.registration`, `sdr.cloner`, `sdr.read`, `sdr.find`) expose the same operations, preconditions, and options as the subcommands; the command-line interface is a thin layer over them. Read-only lookups are `sdr.read` rather than `sdr.inspect`, because `inspect` is `Object#inspect`.
+The library objects (`sdr.versions`, `sdr.workflows`, `sdr.files`, `sdr.file_sets`, `sdr.collections`, `sdr.registration`, `sdr.cloner`, `sdr.read`, `sdr.find`) expose the same operations, preconditions, and options as the subcommands; the command-line interface is a thin layer over them. Read-only lookups are `sdr.read` rather than `sdr.inspect`, because `inspect` is `Object#inspect`.
 - The block form `versions.open(druid, description:) { … }` opens a version for the block and closes it afterwards; `keep_open: true` leaves it open.
 - Content changes inside the block are allowed because this run opened that version. Content calls made outside any version the run opened stop the item, just as the commands do.
 

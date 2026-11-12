@@ -37,8 +37,10 @@ end
   - `replace(druid, filename, path: | content:, mimetype:)`
   - `remove(druid, [filenames], drop_empty_file_sets:)`
   - `set(druid, filename, …)`
+  - `move(druid, [filenames], to:, from: [file sets], position:, drop_empty_file_sets:)`
   - `fetch(druid, [filenames], source:, version:, to:)`
   - `list(druid, workspace:)`
+- `sdr.file_sets`: `list(druid)`, `add(druid, label:, type:, position:)`, `update(druid, file_set, label:, type:)`, `remove(druid, [file sets], with_files:)`, `order(druid, [file sets])`; file sets are IDs or labels.
 - `sdr.workflows`: `run(druid, wf, version:, lane:)`, `set(druid, wf, step, status, expect:, note:)`, `reset(druid, wf, step)`, `skip_all(druid, wf, note:)`, `check(druid, 'WF:complete')` (returns a hash).
 - `sdr.collections`: `add(druid, collection)`, `remove(druid, collection)`.
 - `sdr.registration.register(apo:, title: | description:, geographic:, source_id:, type:, collection:, tags:, view:, download:, accession:)`, where `description:` is a full cocina description hash (e.g. copied from another object, minus `purl`), returns the new druid (nil in a dry run). The run owns the new object's version 1, so `sdr.files.add` can follow before `sdr.versions.close`.
