@@ -1,0 +1,56 @@
+plugins:
+  - rubocop-rspec
+
+AllCops:
+  TargetRubyVersion: 3.4
+  NewCops: enable
+  SuggestExtensions: false
+
+Layout/LineLength:
+  Max: 130
+
+Metrics/MethodLength:
+  Max: 30
+Metrics/PerceivedComplexity:
+  Max: 18
+Metrics/ClassLength:
+  Max: 250
+Metrics/ParameterLists:
+  CountKeywordArgs: false
+
+Style/Documentation:
+  Exclude:
+    - spec/**/*
+
+RSpec/ExampleLength:
+  Max: 30
+RSpec/MultipleExpectations:
+  Enabled: false
+RSpec/MultipleMemoizedHelpers:
+  Enabled: false
+RSpec/NestedGroups:
+  Max: 4
+RSpec/DescribeClass:
+  Exclude:
+    - spec/misc_spec.rb
+RSpec/InstanceVariable:
+  Enabled: false
+RSpec/SpecFilePathFormat:
+  Enabled: false
+RSpec/ContextWording:
+  Enabled: false
+
+# Command dispatch and option parsing are long by nature.
+Metrics/AbcSize:
+  Max: 40
+  Exclude:
+    - lib/sdr_ops/cli.rb
+    - spec/**/*
+Metrics/CyclomaticComplexity:
+  Max: 18
+  Exclude:
+    - lib/sdr_ops/cli.rb
+Metrics/BlockLength:
+  Exclude:
+    - spec/**/*
+    - remote/find.rb

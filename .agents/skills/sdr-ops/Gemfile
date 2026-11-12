@@ -1,0 +1,19 @@
+# frozen_string_literal: true
+
+source 'https://rubygems.org'
+
+# Keep these on the versions DSA runs (see `sdr-ops whoami` for drift).
+gem 'cocina-models', '~> 0.133.0'
+gem 'dor-services-client', '~> 15.71'
+
+# Bundled gems that are no longer default gems in Ruby 3.4+
+gem 'base64'
+gem 'csv'
+
+group :test do
+  gem 'jwt' # to check minted tokens the way DSA does
+  gem 'rspec', '~> 3.13'
+  gem 'rubocop', require: false
+  gem 'rubocop-rspec', require: false
+  gem 'webmock'
+end

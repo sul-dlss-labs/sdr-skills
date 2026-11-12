@@ -1,0 +1,27 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# sdr-ops: inspect and change SDR objects. See ../SKILL.md.
+# Always runs against this skill's own Gemfile, wherever the skill is installed or symlinked.
+require 'rbconfig'
+
+skill_root = File.expand_path('..', __dir__)
+gemfile = File.join(skill_root, 'Gemfile')
+
+# If we were started inside another project's bundle, re-exec with a clean environment pointed at ours.
+if ENV['BUNDLE_GEMFILE'] != gemfile
+  env = ENV.to_h.reject { |key, _| key.start_with?('BUNDLE_') || %w[RUBYOPT RUBYLIB].include?(key) }
+  exec(env.merge('BUNDLE_GEMFILE' => gemfile), RbConfig.ruby, File.realpath(__FILE__), *ARGV, unsetenv_others: true)
+end
+
+begin
+  require 'bundler/setup'
+rescue LoadError, StandardError => e
+  warn "sdr-ops: gems aren't installed (#{e.message.lines.first&.strip}). Run: (cd #{skill_root} && bundle install)"
+  exit 2
+end
+
+$LOAD_PATH.unshift(File.join(skill_root, 'lib'))
+require 'sdr_ops'
+
+exit SdrOps::CLI.start(ARGV)
