@@ -14,6 +14,7 @@ require 'tempfile'
 require 'time'
 
 require 'cocina/models'
+require 'cocina_display' # cocina-models' description validators use it but don't require it
 require 'dor/services/client'
 
 require_relative 'sdr_ops/errors'

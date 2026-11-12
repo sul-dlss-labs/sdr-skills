@@ -450,6 +450,7 @@ Build-order steps 1–6 are implemented in `.agents/skills/sdr-ops` (2026-11-12)
   - read-only lookups are `sdr.read`;
   - no `.ruby-version`;
   - specs live in the skill directory.
+- **cocina-models needs `cocina_display` loaded:** its description language validator uses it without requiring it, and the gem depends on it without a version constraint (Bundler picked 0.2.0). The Gemfile pins `cocina_display ~> 2.14` (DSA's version) and `sdr_ops.rb` requires it.
 - **dor-services-client 15.71 added `version.update_description`**, which changes an open version's description. `sdr-ops` doesn't use it yet; it could offer a way to describe an open version accurately without closing it.
 
 ## Open questions
