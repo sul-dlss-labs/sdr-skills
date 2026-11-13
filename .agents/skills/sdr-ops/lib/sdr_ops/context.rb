@@ -141,6 +141,7 @@ module SdrOps
     def versions = (@versions ||= Versions.new(self))
     def workflows = (@workflows ||= Workflows.new(self))
     def files = (@files ||= Files.new(self))
+    def descriptive = (@descriptive ||= Descriptive.new(self))
     def file_sets = (@file_sets ||= FileSets.new(self))
     def collections = (@collections ||= Collections.new(self))
     def find = (@find ||= Find.new(self))

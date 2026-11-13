@@ -288,6 +288,7 @@ This applies to `files …` and `collection …`:
 | `files set FILENAME [--mimetype] [--use] [--preserve/--shelve/--publish] [--access-from-object]` | Changes attributes, e.g. the `.ovr` mimetype fix. Turning preserve on requires the bytes to be present in the workspace. |
 | `files move [FILE...] [--from FILESET]... --to FILESET [--position N] [--drop-empty-file-sets]` | Moves named files and/or whole file sets' contents into a file set (by ID or label) at a position; moving within one file set reorders it. Identifiers and attributes don't change. `--drop-empty-file-sets` removes file sets the move empties. |
 | `files make-readable FILENAME... [--no-export]` | Over ssh as `lyberadmin`, `chmod go+r` the files' workspace copies and their copies in the export bag (`/dor/export/<druid>/data/content/`, following symlinks), reporting modes before and after; the dry run only reports. Changes no cocina, so it needs no version. For `transfer-object` "Permission denied" errors, followed by `workflow reset preservationIngestWF transfer-object`. |
+| `descriptive.update(druid) { |description| … }` (scripts) | Yields a deep copy of the description as a Hash; validates the edited result as cocina, saves it in a version the run opened or adopted, and reports the changed leaf paths. No CLI command. |
 
 ### File sets
 
