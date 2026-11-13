@@ -26,6 +26,12 @@ solr_docs = lambda do |filters, field_list|
   end
 end
 
+# Solr filters other than the workflow one; the workflows source applies them to the documents it joins.
+object_filters = []
+object_filters << term.call('content_type_ssimdv', params['content_type']) if params['content_type']
+object_filters << term.call('member_of_collection_ssim', params['collection']) if params['collection']
+params.fetch('facets', {}).each { |field, value| object_filters << term.call(field, value) }
+
 count = 0
 ActiveRecord::Base.while_preventing_writes do
   if params['source'] == 'workflows'
@@ -34,8 +40,11 @@ ActiveRecord::Base.while_preventing_writes do
     steps = steps.to_a
     steps.select! { |step| error_re.match?(step.error_msg.to_s) } if error_re
     steps.each_slice(200) do |slice|
-      docs = solr_docs.call(["{!terms f=id}#{slice.map(&:druid).join(',')}"], ['id', *fields]).index_by { it['id'] }
+      docs = solr_docs.call(["{!terms f=id}#{slice.map(&:druid).join(',')}", *object_filters], ['id', *fields])
+                      .index_by { it['id'] }
       slice.each do |step|
+        next if object_filters.any? && !docs.key?(step.druid) # filtered out by Solr
+
         doc = docs[step.druid] || {}
         emit.call({ 'druid' => step.druid.delete_prefix('druid:'), 'version' => step.version,
                     'workflow' => step.workflow, 'step' => step.process, 'status' => step.status,
@@ -45,14 +54,11 @@ ActiveRecord::Base.while_preventing_writes do
       end
     end
   else
-    filters = []
-    filters << term.call('content_type_ssimdv', params['content_type']) if params['content_type']
+    filters = object_filters.dup
     if params['workflow']
       value = [params['workflow'], params['step'], params['status']].compact.join(':')
       filters << term.call('wf_wps_ssimdv', value)
     end
-    filters << term.call('member_of_collection_ssim', params['collection']) if params['collection']
-    params.fetch('facets', {}).each { |field, value| filters << term.call(field, value) }
     abort 'sdr-ops find: give at least one filter' if filters.empty?
 
     field_list = ['id', *fields, ('wf_error_ssim' if error_re)].compact

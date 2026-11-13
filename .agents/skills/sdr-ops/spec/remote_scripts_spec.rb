@@ -106,8 +106,8 @@ RSpec.describe 'remote scripts' do # rubocop:disable RSpec/DescribeClass
 
       _query, args = solr_calls.first
       expect(args[:fq]).to eq ['{!term f=content_type_ssimdv}geo',
-                               '{!term f=wf_wps_ssimdv}gisDerivativeWF:create-derivatives:error',
-                               '{!term f=member_of_collection_ssim}druid:nz187ct8959']
+                               '{!term f=member_of_collection_ssim}druid:nz187ct8959',
+                               '{!term f=wf_wps_ssimdv}gisDerivativeWF:create-derivatives:error']
       expect(args[:fl]).to eq 'id,display_title_ss,wf_error_ssim'
       expect(records(output, 'SDR_OPS_ROW ')).to eq [{ 'druid' => 'bc641kr2427', 'display_title_ss' => 'Railways' }]
       expect(ActiveRecord::Base.writes_prevented).to eq [true]
@@ -130,6 +130,30 @@ RSpec.describe 'remote scripts' do # rubocop:disable RSpec/DescribeClass
         .to include('druid' => 'bc641kr2427', 'version' => 2, 'error_message' => 'not a valid UTF-8 string',
                     'display_title_ss' => 'Railways')
       expect(solr_calls.first.last[:fq]).to eq ['{!terms f=id}druid:bc641kr2427']
+    end
+
+    it 'applies collection, content type, and facet filters to the workflow rows through Solr' do
+      steps = %w[druid:bc641kr2427 druid:bb330wn5590].map do |druid|
+        Struct.new(:druid, :version, :workflow, :process, :status, :error_msg, :updated_at)
+              .new(druid, 2, 'gisDerivativeWF', 'create-derivatives', 'error', 'boom', nil)
+      end
+      relation = Class.new do
+        define_method(:initialize) { |rows| @rows = rows }
+        define_method(:where) { |**| self }
+        define_method(:to_a) { @rows }
+      end
+      stub_const('WorkflowStep', Class.new { define_singleton_method(:where) { |**| relation.new(steps) } })
+      docs.replace([docs.first]) # Solr matches only bc641kr2427 in the collection
+      params = { source: 'workflows', workflow: 'gisDerivativeWF', step: 'create-derivatives', status: 'error',
+                 content_type: 'geo', collection: 'druid:nz187ct8959', facets: { 'tag_ssim' => 'x' },
+                 fields: %w[display_title_ss] }
+      output = run_script('find.rb', 'SDR_OPS_FIND' => JSON.generate(params))
+
+      expect(solr_calls.first.last[:fq]).to eq ['{!terms f=id}druid:bc641kr2427,druid:bb330wn5590',
+                                                '{!term f=content_type_ssimdv}geo',
+                                                '{!term f=member_of_collection_ssim}druid:nz187ct8959',
+                                                '{!term f=tag_ssim}x']
+      expect(records(output, 'SDR_OPS_ROW ').map { it['druid'] }).to eq ['bc641kr2427']
     end
   end
 

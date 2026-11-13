@@ -237,7 +237,7 @@ DSA's API has no search by workflow state or facet, so `find` runs `remote/find.
   - It is authoritative and has no index lag.
   - It returns full error text; Solr's copy is truncated at about 32 KB.
   - `--error-match` filters on that text, which Argo's facets can't do.
-  - Title and collection are added with one batched Solr lookup.
+  - Title and collection are added with one batched Solr lookup, which also applies `--collection`, `--content-type`, and `--facet` (rows whose object doesn't match are dropped).
 - Output is CSV or JSONL with columns compatible with Argo's report download, so existing `bin/` scripts that take an Argo CSV still work.
 - `find --argo-url` prints the equivalent Argo `report/download` link. This is a fallback for people without DSA ssh access, or for checking results in the UI.
 

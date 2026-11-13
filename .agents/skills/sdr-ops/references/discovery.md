@@ -16,6 +16,7 @@ sdr-ops --env prod find [--source solr|workflows] [--workflow WF --step STEP --s
   - It is authoritative, has no index lag, and has the full error text.
   - It needs `--workflow` and `--step`.
   - Each row adds `version`, `status`, `error_message`, and `updated_at`, plus the requested Solr fields looked up by druid.
+  - `--collection`, `--content-type`, and `--facet` apply through that Solr lookup: rows whose object doesn't match are dropped.
 - `--out x.csv` writes CSV with a `druid` column, which `--druids x.csv` reads back. Otherwise rows are JSON lines.
 - `--argo-url` prints the equivalent Argo report CSV link instead (for people without DSA ssh, or to look at results in Argo).
 
