@@ -42,7 +42,7 @@ Global options can go anywhere: `--env`, `--execute`, `--run DIR`, `--druids FIL
 | Find objects | `find --workflow WF --step S --status error [--error-match RE] --out items.csv` | [discovery.md](references/discovery.md) |
 | Versions | `version open --description TEXT`, `version close`, `version discard` | [versions.md](references/versions.md) |
 | Workflows | `workflow run WF`, `workflow reset WF STEP`, `workflow set WF STEP STATUS`, `workflow skip-all WF --note TEXT`, `check --until WF:complete` | [workflows.md](references/workflows.md) |
-| Files | `files fetch`, `files add`, `files replace`, `files remove`, `files set`, `files move` | [files.md](references/files.md) |
+| Files | `files fetch`, `files add`, `files replace`, `files remove`, `files set`, `files move`, `files make-readable` | [files.md](references/files.md) |
 | File sets | `filesets DRUID`, `filesets add/set/remove/order` | [files.md](references/files.md#file-sets) |
 | Collections | `collection add/remove COLLECTION DRUID...` | needs `--open` like files |
 | New objects | `register --title TEXT --apo DRUID [--type object] [--accession]` | [registration.md](references/registration.md) |

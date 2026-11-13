@@ -88,6 +88,31 @@ module SdrOps
       change(state, 'files.remove', new_cocina, args: { filenames:, drop_empty_file_sets: })
     end
 
+    # Make files readable by every robot: add group and other read permission to their workspace copies and, with
+    # `export:`, to the bag accessioning exported for preservation (whose files may link to them). This fixes bytes
+    # on disk, not cocina, so it needs no open version. Use it when preservationIngestWF:transfer-object fails with
+    # "Permission denied" (files uploaded before sdr-ops set 0644). The dry run reports the current modes.
+    def make_readable(druid, filenames, export: true)
+      state = @context.state(druid)
+      raise UsageError, 'Name the files to make readable' if filenames.empty?
+
+      filenames.each { find_file!(state, it) }
+      paths = filenames.flat_map do |name|
+        [workspace_path(state.druid, name), (File.join(Druid.export_content_dir(state.druid), name) if export)].compact
+      end
+      @context.ensure_mutations_allowed!
+      modes = transport.make_readable(@context.host, paths, change: @context.execute?)
+      raise Skip, "#{state.druid}: none of #{paths.join(', ')} exist on #{@context.host}" if modes.all? { it[:kind] == 'missing' }
+
+      unreadable = modes.reject { it[:kind] == 'missing' || readable_mode?(it[:mode_after]) }
+      if @context.execute? && unreadable.any?
+        raise Error, "#{state.druid}: still not readable: #{unreadable.map { "#{it[:path]} (#{it[:mode_after]})" }.join(', ')}"
+      end
+
+      @context.report(druid: state.druid, action: 'files.make_readable', result: @context.execute? ? 'ok' : 'planned',
+                      args: { filenames:, export: }, details: { modes: })
+    end
+
     # Move files into a file set (by ID or label): named files, and/or every file of the `from:` file sets, in
     # order, inserted at `position` (1-based; default last). Moving within one file set reorders it. Files keep
     # their identifiers and attributes. `drop_empty_file_sets:` removes file sets the move leaves empty.
@@ -345,6 +370,11 @@ module SdrOps
       end
 
       filename
+    end
+
+    # Group and other can read: e.g. 644, 664, 755 (octal mode digits from stat).
+    def readable_mode?(mode)
+      mode.to_s.match?(/\A[0-7]?[0-7][4-7][4-7]\z/)
     end
 
     def workspace_path(druid, filename)

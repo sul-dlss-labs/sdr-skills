@@ -125,10 +125,10 @@ Stacks accepts service tokens: HS256 JWTs signed with `Settings.service_token.hm
    - compute size, md5, and sha1 locally (Ruby's `Digest`);
    - `ssh` to create the druid's workspace `content/` directory if needed;
    - `scp -s` the bytes as `lyberadmin` to a `.sdr-ops-partial` file there;
-   - verify the md5 on the host with `md5sum`, then move the file into place;
+   - verify the md5 on the host with `md5sum`, `chmod 0644` it, then move the file into place;
    - only then update cocina.
 
-   `-s` forces scp's SFTP mode (the default since OpenSSH 9.0; the servers' sshd enables the sftp subsystem), so remote paths are taken literally rather than re-parsed by a remote shell. The extra ssh calls are cheap with a ControlMaster setup. Only app commands (`bin/rails runner`, `bundle exec ruby`) use a login shell.
+   `-s` forces scp's SFTP mode (the default since OpenSSH 9.0; the servers' sshd enables the sftp subsystem), so remote paths are taken literally rather than re-parsed by a remote shell. scp carries the local file's mode across, and a `content:` upload's Tempfile is `0600`; the `chmod` matters because preservation robots read the exported bag as a different user. Before it was added, `transfer-object` failed with "Permission denied" for 154 China 2000 `.cpg` files (gis-robot-suite#1134); `files make-readable` repairs files staged before the fix. The extra ssh calls are cheap with a ControlMaster setup. Only app commands (`bin/rails runner`, `bundle exec ruby`) use a login shell.
 4. Emit JSON lines and append ledger rows.
 
 ### Preflight
@@ -287,6 +287,7 @@ This applies to `files …` and `collection …`:
 | `files remove FILENAME...` | Removes entries from structural metadata. Empty file sets are kept unless `--drop-empty-file-sets` is given. |
 | `files set FILENAME [--mimetype] [--use] [--preserve/--shelve/--publish] [--access-from-object]` | Changes attributes, e.g. the `.ovr` mimetype fix. Turning preserve on requires the bytes to be present in the workspace. |
 | `files move [FILE...] [--from FILESET]... --to FILESET [--position N] [--drop-empty-file-sets]` | Moves named files and/or whole file sets' contents into a file set (by ID or label) at a position; moving within one file set reorders it. Identifiers and attributes don't change. `--drop-empty-file-sets` removes file sets the move empties. |
+| `files make-readable FILENAME... [--no-export]` | Over ssh as `lyberadmin`, `chmod go+r` the files' workspace copies and their copies in the export bag (`/dor/export/<druid>/data/content/`, following symlinks), reporting modes before and after; the dry run only reports. Changes no cocina, so it needs no version. For `transfer-object` "Permission denied" errors, followed by `workflow reset preservationIngestWF transfer-object`. |
 
 ### File sets
 

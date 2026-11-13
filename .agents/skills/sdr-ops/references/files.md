@@ -43,6 +43,7 @@
 - `files replace DRUID FILE PATH --open "…"` replaces a file's bytes: same identifier and attributes, new size and digests.
 - `files remove DRUID FILE... [--drop-empty-file-sets] --open "…"` removes files from structural metadata. Preservation keeps earlier versions' files; the file is absent from the next published version.
 - `files set DRUID FILE [--mimetype] [--use] [--preserve] [--shelve] [--publish] [--access-from-object] --open "…"` changes attributes. Turning preserve on requires the bytes in the workspace.
+- `files make-readable DRUID FILE... [--no-export] --execute` adds group and other read permission (`chmod go+r`) to the files' workspace copies and to the bag exported for preservation, reporting modes before and after (the dry run only reports). It changes no cocina and needs no version. Use it when `preservationIngestWF:transfer-object` fails with `cp: cannot open … Permission denied`, then `workflow reset preservationIngestWF transfer-object DRUID`. Uploads are `0644` now; files staged by sdr-ops before that fix could be `0600`.
 - `files fetch DRUID [FILE...] [--source preservation|workspace|stacks] [--version N] [--to DIR] --execute` downloads files (a dry run without `--execute`). The default destination is `<run>/downloads/<druid>/`, and every download is checked against cocina's md5.
   - `preservation` (default) covers any preserved file in any version; it goes through the workspace host.
   - `workspace` covers files the robots have already staged, e.g. after `fetch-files` ran.

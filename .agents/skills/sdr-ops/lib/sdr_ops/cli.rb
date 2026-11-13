@@ -44,6 +44,7 @@ module SdrOps
                        [--use U] [--preserve B] [--shelve B] [--publish B] [--access-from-object]
                  files replace DRUID FILE PATH [--mimetype T] | files remove DRUID FILE... [--drop-empty-file-sets]
                  files move DRUID [FILE...] [--from FILESET]... --to FILESET [--position N] [--drop-empty-file-sets]
+                 files make-readable DRUID FILE... [--no-export]   (chmod go+r in the workspace and export bag)
       File sets: filesets DRUID... | filesets add DRUID --label L [--type T] [--position N]
                  filesets set DRUID FILESET [--label L] [--type T] | filesets remove DRUID FILESET... [--with-files]
                  filesets order DRUID FILESET...   (FILESET = ID or label; with --druids, omit DRUID)
@@ -398,6 +399,7 @@ module SdrOps
       when 'remove' then @argv.shift && files_remove
       when 'move' then @argv.shift && files_move
       when 'set' then @argv.shift && files_set
+      when 'make-readable' then @argv.shift && files_make_readable
       else files_list
       end
     end
@@ -476,6 +478,14 @@ module SdrOps
       each_druid(druids, single: true) do |druid|
         with_content_version(druid, **version_options) { context.files.move(druid, filenames, from:, **options) }
       end
+    end
+
+    def files_make_readable
+      options = parse { |opts, o| opts.on('--no-export', 'leave the export bag alone') { o[:export] = false } }
+      druid = @argv.shift
+      raise UsageError, 'files make-readable needs DRUID FILENAME...' if druid.nil? || @argv.empty?
+
+      each_druid([druid], single: true) { |d| context.files.make_readable(d, @argv, **options) }
     end
 
     def files_set

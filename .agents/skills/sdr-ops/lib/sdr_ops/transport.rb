@@ -65,7 +65,9 @@ module SdrOps
     end
 
     # Copy a local file to a path on a workspace host: upload to a partial file, check its md5 on the host,
-    # then move it into place, so a bad or interrupted upload never sits under the real name.
+    # then move it into place, so a bad or interrupted upload never sits under the real name. scp carries the
+    # local file's mode across, so the partial is set to 0644 first: robots running as other users (preservation)
+    # must be able to read it, and a Tempfile (content: uploads) is 0600.
     def put_file(profile, local_path:, remote_path:, md5:)
       host = environment.workspace_host(profile)
       partial = "#{remote_path}.sdr-ops-partial"
@@ -75,6 +77,7 @@ module SdrOps
       verify = <<~SH
         sum=$(md5sum #{Shellwords.escape(partial)} | cut -d' ' -f1)
         if [ "$sum" != #{Shellwords.escape(md5)} ]; then rm -f #{Shellwords.escape(partial)}; echo "md5 mismatch on host: $sum" >&2; exit 3; fi
+        chmod 0644 #{Shellwords.escape(partial)}
         mv -f #{Shellwords.escape(partial)} #{Shellwords.escape(remote_path)}
       SH
       run!(ssh_argv(user: WORKSPACE_USER, host:, command: verify), "Upload of #{remote_path} failed")
@@ -110,11 +113,48 @@ module SdrOps
       value.empty? ? nil : value
     end
 
+    # Add group and other read permission to files on a workspace host (following symlinks, as the export
+    # bag's are), or with `change: false` only report their modes.
+    # @return [Array<Hash>] { path:, kind: file|symlink|missing, mode_before:, mode_after: } per path
+    def make_readable(profile, paths, change:)
+      paths.each do |path|
+        unless READABLE_ROOTS.any? { path.start_with?("#{it}/") } && !path.split('/').include?('..')
+          raise UsageError, "Refusing to change modes outside #{READABLE_ROOTS.join(' and ')}: #{path}"
+        end
+      end
+      result = ssh(user: WORKSPACE_USER, host: environment.workspace_host(profile),
+                   command: make_readable_script(paths, change:))
+      raise RemoteError, "Couldn't change file modes: #{result.stderr.strip}" unless result.success?
+
+      parse_modes(result.stdout)
+    end
+
     def remove_remote(profile, path)
       ssh(user: WORKSPACE_USER, host: environment.workspace_host(profile), command: "rm -rf #{Shellwords.escape(path)}")
     end
 
     private
+
+    def make_readable_script(paths, change:)
+      body = <<~'SH'
+        kind=file; [ -L "$p" ] && kind=symlink
+        if [ ! -e "$p" ]; then printf 'SDR_OPS_MODE missing - - %s\n' "$p"; continue; fi
+        before=$(stat -L -c %a "$p")
+        CHANGE
+        printf 'SDR_OPS_MODE %s %s %s %s\n' "$kind" "$before" "$(stat -L -c %a "$p")" "$p"
+      SH
+      body = body.sub('CHANGE', change ? 'chmod go+r "$p" || exit 3' : ':')
+      "for p in #{paths.map { Shellwords.escape(it) }.join(' ')}; do\n#{body}done"
+    end
+
+    def parse_modes(stdout)
+      stdout.to_s.each_line.filter_map do |line|
+        next unless line.start_with?('SDR_OPS_MODE ')
+
+        kind, before, after, path = line.chomp.delete_prefix('SDR_OPS_MODE ').split(' ', 4)
+        { path:, kind:, mode_before: before == '-' ? nil : before, mode_after: after == '-' ? nil : after }
+      end
+    end
 
     def rails_runner(user:, host:, app_dir:, script:, env:)
       command = "cd #{app_dir} && #{env_assignments(env.merge('RAILS_ENV' => 'production'))} " \

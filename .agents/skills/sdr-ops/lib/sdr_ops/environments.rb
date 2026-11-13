@@ -59,6 +59,8 @@ module SdrOps
     'gis' => '/opt/app/lyberadmin/gis-robot-suite/current'
   }.freeze
   WORKSPACE_ROOT = '/dor/workspace'
+  EXPORT_ROOT = '/dor/export'
+  READABLE_ROOTS = [WORKSPACE_ROOT, EXPORT_ROOT].freeze
 
   def self.environment(name)
     ENVIRONMENTS.fetch(name.to_s) do

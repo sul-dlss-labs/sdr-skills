@@ -156,6 +156,43 @@ RSpec.describe SdrOps::Files do
     end
   end
 
+  describe '#make_readable' do
+    let(:workspace_dbf) { '/dor/workspace/bc/641/kr/2427/bc641kr2427/content/rail.dbf' }
+    let(:export_dbf) { '/dor/export/bc641kr2427/data/content/rail.dbf' }
+
+    it 'reports the current modes of the workspace and export copies in a dry run, without needing a version' do
+      transport.modes = { workspace_dbf => %w[600 644], export_dbf => %w[600 644] }
+      context.files.make_readable(druid, ['rail.dbf'])
+
+      expect(transport.mode_changes).to eq [{ profile: 'accession', paths: [workspace_dbf, export_dbf], change: false }]
+      row = emitted.last
+      expect(row).to include('action' => 'files.make_readable', 'result' => 'planned')
+      expect(row['details']['modes'].map { it['mode_before'] }).to eq %w[600 600]
+    end
+
+    context 'when executing' do
+      let(:execute) { true }
+
+      it 'changes the modes, leaving out the export bag with export: false' do
+        transport.modes = { workspace_dbf => %w[600 644] }
+        context.files.make_readable(druid, ['rail.dbf'], export: false)
+
+        expect(transport.mode_changes.last).to include(paths: [workspace_dbf], change: true)
+        expect(emitted.last).to include('result' => 'ok')
+      end
+
+      it 'fails when a file is still unreadable afterwards' do
+        transport.modes = { workspace_dbf => %w[600 600] }
+        expect { context.files.make_readable(druid, ['rail.dbf']) }.to raise_error(SdrOps::Error, /still not readable/)
+      end
+    end
+
+    it "skips when none of the copies exist, or the object doesn't have the file" do
+      expect { context.files.make_readable(druid, ['rail.dbf']) }.to raise_error(SdrOps::Skip, /none of/)
+      expect { context.files.make_readable(druid, ['nope.cpg']) }.to raise_error(SdrOps::Skip, /no file named/)
+    end
+  end
+
   describe '#fetch' do
     let(:execute) { true }
 

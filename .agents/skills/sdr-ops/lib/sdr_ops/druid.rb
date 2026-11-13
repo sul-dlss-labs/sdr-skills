@@ -36,5 +36,10 @@ module SdrOps
     def workspace_content_dir(value)
       File.join(WORKSPACE_ROOT, tree(value), 'content')
     end
+
+    # @return [String] the content directory of the bag accessioning exports for preservation
+    def export_content_dir(value)
+      File.join(EXPORT_ROOT, bare(value), 'data', 'content')
+    end
   end
 end

@@ -25,8 +25,8 @@ end
 
 # Records transport calls made by the library.
 class FakeTransport
-  attr_reader :puts, :gets, :scripts, :removed
-  attr_accessor :remote_md5s, :script_results, :downloads
+  attr_reader :puts, :gets, :scripts, :removed, :mode_changes
+  attr_accessor :remote_md5s, :script_results, :downloads, :modes
 
   def initialize
     @puts = []
@@ -36,6 +36,8 @@ class FakeTransport
     @remote_md5s = {}
     @script_results = []
     @downloads = {}
+    @mode_changes = []
+    @modes = {}
   end
 
   def kerberos_sunet = 'jdoe'
@@ -68,6 +70,17 @@ class FakeTransport
   def stacks_runner(script, env: {})
     @scripts << { profile: :stacks, script: File.basename(script), env: }
     @script_results
+  end
+
+  # `modes` maps a path to [mode before, mode after a change]; unlisted paths are missing.
+  def make_readable(profile, paths, change:)
+    @mode_changes << { profile:, paths:, change: }
+    paths.map do |path|
+      before, after = @modes[path]
+      next { path:, kind: 'missing', mode_before: nil, mode_after: nil } unless before
+
+      { path:, kind: 'file', mode_before: before, mode_after: change ? after : before }
+    end
   end
 
   def remove_remote(_profile, path)
