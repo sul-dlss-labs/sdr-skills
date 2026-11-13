@@ -49,7 +49,7 @@ Global options can go anywhere: `--env`, `--execute`, `--run DIR`, `--druids FIL
 | Test copies | `clone DRUID --apo DRUID [--from prod]` (into stage or qa) | [cloning.md](references/cloning.md) |
 | One-off work | `run SCRIPT.rb ARGS`, plus `push`, `pull`, `exec --` | [writing-scripts.md](references/writing-scripts.md) |
 
-**Content changes** (`files add/replace/remove/set/move`, `filesets add/set/remove/order`, `collection`) happen only in a version this run opened. Pass `--open "Version description"`, and the command opens a version, makes the change, and closes it (which starts accessioning). Add `--keep-open` to keep adding changes to that version or to run a workflow in it. If the object already has an open version that this run didn't open, the item stops and reports who opened it.
+**Content changes** (`files add/replace/remove/set/move`, `filesets add/set/remove/order`, `collection`) happen only in a version this run opened. Pass `--open "Version description"`, and the command opens a version, makes the change, and closes it (which starts accessioning). Add `--keep-open` to keep adding changes to that version or to run a workflow in it. If the object already has an open version that this run didn't open, the item stops and reports who opened it; `version adopt` takes such a version over, but only when the user has decided to (see [versions.md](references/versions.md)).
 
 ## Reading results
 

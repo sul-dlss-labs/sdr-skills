@@ -36,6 +36,7 @@ module SdrOps
                       [--content-type T] [--collection DRUID] [--facet FIELD=VALUE] [--fields a,b] [--out FILE] [--argo-url]
       Versions:  version open DRUID... --description TEXT | version close DRUID... [--description TEXT]
                  [--no-accession] [--user-versions MODE] [--lane L] | version discard DRUID...
+                 version adopt DRUID... --opened-by WHO --description TEXT   (make someone else's open version this run's)
       Workflows: workflow run WF DRUID... [--version N] [--lane L] | workflow set WF STEP STATUS DRUID... [--expect S]
                  workflow reset WF STEP DRUID... | workflow skip-all WF DRUID... --note TEXT
                  check --until WF[:STEP]:complete DRUID...
@@ -339,7 +340,15 @@ module SdrOps
         each_druid { |druid| context.versions.close(druid, **options) }
       when 'discard'
         each_druid { |druid| context.versions.discard(druid) }
-      else raise UsageError, 'version needs open, close, or discard'
+      when 'adopt'
+        options = parse do |opts, o|
+          opts.on('--opened-by WHO') { o[:opened_by] = it }
+          opts.on('--description TEXT') { o[:description] = it }
+        end
+        raise UsageError, 'version adopt needs --opened-by and --description' unless options[:opened_by] && options[:description]
+
+        each_druid { |druid| context.versions.adopt(druid, **options) }
+      else raise UsageError, 'version needs open, close, discard, or adopt'
       end
     end
 

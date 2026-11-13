@@ -34,6 +34,32 @@ module SdrOps
       close(state.druid) unless keep_open
     end
 
+    # Treat a version someone else opened as this run's own, so content changes are allowed in it. Only when the
+    # version is open, was opened by `opened_by` (its version_open event), and its description is `description`
+    # (a String, matched exactly, or a Regexp). The ledger records the adoption, so later passes recognise it.
+    def adopt(druid, opened_by:, description:)
+      raise UsageError, 'adopt needs opened_by: and description:' if opened_by.to_s.empty? || description.to_s.empty?
+
+      state = @context.fresh_state(druid)
+      return state if state.own_version?
+      raise Skip, "#{state.druid} has no open version to adopt" unless state.open?
+
+      opener = opener(state)
+      matches = description.is_a?(Regexp) ? description.match?(state.description.to_s) : state.description == description
+      unless opener == opened_by && matches
+        raise Skip, "#{state.druid} version #{state.version} (#{state.description.inspect}, opened by " \
+                    "#{opener.inspect}) isn't the version to adopt (#{description.inspect}, opened by #{opened_by})"
+      end
+
+      @context.ensure_mutations_allowed!
+      state.opened_by_run = state.version
+      @context.mark_planned(state.druid) unless @context.execute?
+      report(state, 'version.adopt', before: { version: state.version, open: true, description: state.description },
+                                     after: state.summary, args: { opened_by:, description: description.to_s },
+                                     details: { assembling: state.assembling })
+      state
+    end
+
     def close(druid, description: nil, accession: true, user_versions: nil, lane: nil)
       state = @context.fresh_state(druid)
       before = state.summary

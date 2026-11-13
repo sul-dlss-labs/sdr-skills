@@ -4,7 +4,7 @@ module SdrOps
   # Append-only JSON-lines record of every action in a run (runs/<run>/ledger.jsonl).
   # It also answers "did this run open that version?", which gates content changes.
   class Ledger
-    OPENING_ACTIONS = %w[version.open object.register].freeze
+    OPENING_ACTIONS = %w[version.open version.adopt object.register].freeze
 
     attr_reader :path
 
@@ -25,7 +25,7 @@ module SdrOps
     end
 
     # @return [Array<Integer>] versions of this druid that this run opened (for real, not in a dry run).
-    # Registering an object counts as opening its version 1.
+    # Registering an object counts as opening its version 1, and adopting a version counts as opening it.
     def opened_versions(druid)
       rows.filter_map do |row|
         next unless row['druid'] == druid && OPENING_ACTIONS.include?(row['action']) && row['result'] == 'ok'

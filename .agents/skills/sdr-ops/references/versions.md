@@ -23,6 +23,7 @@
   - That version is never reused or closed implicitly: it most likely has nothing to do with the change at hand, and may need a different description.
   - What to do about it is the user's decision: `version close` (keeping its description), `version discard`, or finishing or skipping the workflow running in it (see [workflows.md](workflows.md)).
 - `version close` and `version discard` act on whatever version is open, whoever opened it. Their output shows its description and who opened it.
+- `version adopt DRUID... --opened-by WHO --description TEXT` (`versions.adopt(druid, opened_by:, description:)` in scripts, where `description:` can be a Regexp) makes someone else's open version count as this run's, so content changes can be made in it. It refuses unless the version's opener and description both match, and the ledger records the adoption so later passes see the version as the run's own. Use it only when the user has decided that version should be finished rather than closed or discarded as is (e.g. a migration's version whose files need correcting before it can close).
 
 ## Audit trail
 

@@ -8,6 +8,48 @@ RSpec.describe SdrOps::Versions do
   let(:context) { build_context(dsa:, execute:) }
   let(:druid) { CocinaHelpers::DRUID }
 
+  describe '#adopt' do
+    let(:dsa) do
+      FakeDsa.new.add(build_dro(version: 3), open: true, description: 'Unzip data.zip',
+                                             events: [FakeDsa.new.event('version_open', who: 'gis-robot-suite', version: '3')])
+    end
+
+    def adopt(**)
+      context.versions.adopt(druid, opened_by: 'gis-robot-suite', description: /\AUnzip data\.zip/, **)
+    end
+
+    it 'refuses a version opened by someone else or with another description' do
+      expect { context.versions.adopt(druid, opened_by: 'asmith', description: 'Unzip data.zip') }
+        .to raise_error(SdrOps::Skip, /isn't the version to adopt/)
+      expect { context.versions.adopt(druid, opened_by: 'gis-robot-suite', description: 'Unzip') }
+        .to raise_error(SdrOps::Skip, /isn't the version to adopt/)
+      expect { context.files.remove(druid, ['rail.shp']) }.to raise_error(SdrOps::OpenVersionExists)
+    end
+
+    context 'when dry run' do
+      it 'plans the adoption, after which content changes are planned in that version' do
+        adopt
+        context.files.remove(druid, ['rail.shp'])
+
+        expect(emitted.map { [it['action'], it['result']] }).to eq [%w[version.adopt planned], %w[files.remove planned]]
+        expect(context.ledger.opened_versions(druid)).to be_empty
+        expect(dsa.calls_for(:update)).to be_empty
+      end
+    end
+
+    context 'when executing' do
+      let(:execute) { true }
+
+      it 'records the adoption, so a later pass recognises the version as its own' do
+        adopt
+        expect(context.ledger.opened_versions(druid)).to eq [3]
+        expect(context.state(druid, refresh: true)).to be_own_version
+        expect(adopt).to be_own_version # adopting again is a no-op
+        expect(emitted.count { it['action'] == 'version.adopt' }).to eq 1
+      end
+    end
+  end
+
   describe '#open' do
     context 'when dry run' do
       it 'plans the open without calling DSA, and later calls see the planned version' do
