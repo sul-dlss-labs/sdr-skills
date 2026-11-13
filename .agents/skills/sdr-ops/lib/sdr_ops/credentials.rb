@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
 module SdrOps
-  # Short-lived personal DSA tokens: minted over ssh on the DSA host, kept in the OS keychain,
-  # never printed or written to files. Non-secret details (sub, expiry, versions) go in a state file.
+  # Short-lived personal tokens, minted over ssh, kept in the OS keychain, and never printed or written to files:
+  # one for DSA (minted on the DSA host) and, optionally, a service token for stacks (minted on a stacks host)
+  # for downloading Stanford-only files. Non-secret details (sub, expiry, versions) go in a state file.
   class Credentials
     DEFAULT_TTL = 8 * 3600
     MAX_TTL = 12 * 3600
@@ -58,23 +59,41 @@ module SdrOps
       summary
     end
 
+    # A stacks service token, for downloading Stanford-only files with `files fetch --source stacks`.
+    def login_stacks(sunet:, transport:, ttl: DEFAULT_TTL)
+      raise UsageError, "Not a SUNet ID: #{sunet.inspect}" unless SUNET_PATTERN.match?(sunet.to_s)
+
+      transport.preflight!(user: STACKS_USER, host: @environment.stacks_host)
+      result = transport.stacks_runner(File.join(REMOTE_DIR, 'mint_stacks_token.rb'),
+                                       env: { 'SDR_OPS_SUB' => sunet, 'SDR_OPS_TTL' => ttl }).last
+      token = result&.fetch('token', nil).to_s
+      raise RemoteError, 'mint_stacks_token.rb returned no token' unless TOKEN_PATTERN.match?(token)
+
+      claims = self.class.claims(token)
+      raise RemoteError, 'Minted token has unexpected claims' unless claims['sub'] == sunet && claims['exp'].to_i > Time.now.to_i
+
+      @keychain.store(stacks_service, sunet, token)
+      raise Error, 'Token was not stored in the keychain' unless @keychain.fetch(stacks_service) == token
+
+      write_state('stacks' => { 'sub' => sunet, 'exp' => claims['exp'], 'minted_at' => Time.now.utc.iso8601 })
+      summary
+    end
+
     def logout
       @keychain.delete(service)
+      @keychain.delete(stacks_service)
       FileUtils.rm_f(state_path)
     end
 
-    # @return [String] the token, if present and unexpired
+    # @return [String] the DSA token, if present and unexpired
     def token!
-      token = @keychain.fetch(service)
-      raise AuthError, "Not logged in to #{env_name}: run `sdr-ops --env #{env_name} login`." if token.nil? || token.empty?
+      unexpired!(@keychain.fetch(service), missing: "Not logged in to #{env_name}", what: "#{env_name} token", login: 'login')
+    end
 
-      exp = self.class.claims(token)['exp'].to_i
-      if exp < Time.now.to_i + EXPIRY_MARGIN
-        raise AuthError,
-              "Your #{env_name} token has expired: run `sdr-ops --env #{env_name} login`."
-      end
-
-      token
+    # @return [String] the stacks service token, if present and unexpired
+    def stacks_token!
+      unexpired!(@keychain.fetch(stacks_service), missing: "No #{env_name} stacks token", what: "#{env_name} stacks token",
+                                                  login: 'login --stacks')
     end
 
     # @return [String] the SUNet ID the token was minted for
@@ -90,9 +109,11 @@ module SdrOps
     def summary
       current = state
       exp = current['exp']&.to_i
+      stacks_exp = current.dig('stacks', 'exp')&.to_i
       { env: env_name, sub: current['sub'], expires_at: exp && Time.at(exp).utc.iso8601,
         expired: exp.nil? || exp < Time.now.to_i, dsa_cocina_models_version: current['dsa_cocina_models_version'],
-        local_cocina_models_version: Cocina::Models::VERSION }
+        local_cocina_models_version: Cocina::Models::VERSION,
+        stacks_expires_at: stacks_exp && Time.at(stacks_exp).utc.iso8601 }
     end
 
     def cocina_drift?
@@ -110,13 +131,29 @@ module SdrOps
       "sdr-ops-#{env_name}-dsa"
     end
 
+    def stacks_service
+      "sdr-ops-#{env_name}-stacks"
+    end
+
+    def unexpired!(token, missing:, what:, login:)
+      raise AuthError, "#{missing}: run `sdr-ops --env #{env_name} #{login}`." if token.nil? || token.empty?
+      raise AuthError, "Your #{what} has expired: run `sdr-ops --env #{env_name} #{login}`." if expired?(token)
+
+      token
+    end
+
+    def expired?(token)
+      self.class.claims(token)['exp'].to_i < Time.now.to_i + EXPIRY_MARGIN
+    end
+
     def state_path
       File.join(@state_dir, "#{env_name}.json")
     end
 
+    # Merges into the existing state, so the DSA and stacks logins don't erase each other.
     def write_state(data)
       FileUtils.mkdir_p(@state_dir)
-      File.write(state_path, JSON.pretty_generate(data))
+      File.write(state_path, JSON.pretty_generate(state.merge(data)))
       File.chmod(0o600, state_path)
     end
   end

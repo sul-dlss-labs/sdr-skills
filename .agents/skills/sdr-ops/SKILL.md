@@ -29,6 +29,7 @@ Run it by its path in this skill's directory, e.g. `<skill-dir>/bin/sdr-ops --en
 - The user must be on the Stanford VPN and have a Kerberos ticket (`kinit`). Their ssh config must reach SDR servers through `dlss-jump` (DeveloperPlaybook ssh setup).
 - If `bin/sdr-ops` says gems aren't installed, run `bundle install` in this skill's directory.
 - `sdr-ops --env ENV login` mints a token (8 hours by default; `--ttl 4h` for less, 12h maximum). It needs the user to be able to ssh as `dor_services` to the DSA host. `whoami` shows who is logged in and until when.
+- `sdr-ops --env ENV login --stacks` mints a separate stacks service token, needed only for `files fetch --source stacks` of Stanford-only files. Like `login`, it's the user's to run.
 - If `whoami` or `login` warns about cocina-models drift, the skill's bundle needs updating before any changes can be made. Tell the user; don't work around it.
 
 ## Commands

@@ -207,8 +207,72 @@ RSpec.describe SdrOps::Files do
       end
     end
 
-    it 'refuses stacks downloads of files that are not world-downloadable' do
-      expect { context.files.fetch(druid, ['rail.dbf'], source: 'stacks') }.to raise_error(SdrOps::Skip, /world-downloadable/)
+    context 'with Stanford-only files on stacks' do
+      let(:stacks_token) { 'header.payload.signature' }
+      let(:context) do
+        build_context(dsa:, transport:, execute: true, credentials: FakeCredentials.new(stacks_token:))
+      end
+      let(:dsa) do
+        files = shapefile_hashes.map { it[:filename] == 'rail.shp' ? it.merge(access: { view: 'world', download: 'world' }) : it }
+        FakeDsa.new.add(build_dro(files:))
+      end
+      let(:dl) { File.join(@tmpdir, 'dl') }
+
+      it 'sends the stacks service token for them, and only for them' do
+        stanford = stub_request(:get, 'https://stacks-stage.stanford.edu/file/bc641kr2427/rail.fgb')
+                   .with(headers: { 'Authorization' => "Bearer #{stacks_token}" }).to_return(body: 'rail.fgb')
+        world = stub_request(:get, 'https://stacks-stage.stanford.edu/file/bc641kr2427/rail.shp')
+                .with { !it.headers.key?('Authorization') }.to_return(body: 'rail.shp')
+        context.files.fetch(druid, ['rail.fgb', 'rail.shp'], source: 'stacks', to: dl)
+
+        expect([stanford, world]).to all(have_been_made)
+        expect(File.read(File.join(dl, 'rail.fgb'))).to eq 'rail.fgb'
+        expect(emitted.last['details']['files'].to_h { [it['filename'], it['stacks_token']] })
+          .to eq('rail.fgb' => true, 'rail.shp' => false)
+        expect(@out.string + @err.string).not_to include(stacks_token)
+      end
+
+      it 'explains a 403' do
+        stub_request(:get, 'https://stacks-stage.stanford.edu/file/bc641kr2427/rail.fgb').to_return(status: 403)
+        expect { context.files.fetch(druid, ['rail.fgb'], source: 'stacks', to: dl) }
+          .to raise_error(SdrOps::Error, /HTTP 403.*Stanford-level access only/)
+      end
+
+      it 'treats a redirect to the login page as refused, and never sends the token to another host' do
+        stub_request(:get, 'https://stacks-stage.stanford.edu/file/bc641kr2427/rail.fgb')
+          .to_return(status: 302, headers: { 'Location' => '/file/auth/bc641kr2427/rail.fgb' })
+        expect { context.files.fetch(druid, ['rail.fgb'], source: 'stacks', to: dl) }
+          .to raise_error(SdrOps::Error, /redirected to a login page/)
+
+        stub_request(:get, 'https://stacks-stage.stanford.edu/file/bc641kr2427/rail.dbf')
+          .to_return(status: 302, headers: { 'Location' => 'https://elsewhere.example.com/rail.dbf' })
+        elsewhere = stub_request(:get, 'https://elsewhere.example.com/rail.dbf')
+                    .with { !it.headers.key?('Authorization') }.to_return(body: 'rail.dbf')
+        context.files.fetch(druid, ['rail.dbf'], source: 'stacks', to: dl)
+        expect(elsewhere).to have_been_made
+      end
+
+      it 'needs `login --stacks` first' do
+        context = build_context(dsa:, transport:, execute: true)
+        expect { context.files.fetch(druid, ['rail.fgb'], source: 'stacks', to: dl) }
+          .to raise_error(SdrOps::AuthError, /login --stacks/)
+      end
+
+      it 'plans without a token in a dry run' do
+        build_context(dsa:, transport:).files.fetch(druid, ['rail.fgb'], source: 'stacks', to: dl)
+        expect(a_request(:get, /stacks/)).not_to have_been_made
+      end
+    end
+
+    it 'refuses stacks downloads of files that are location-restricted or not shelved' do
+      location_based = file_hash('rail.dbf', mimetype: 'application/vnd.dbf')
+                       .merge(access: { view: 'stanford', download: 'location-based', location: 'spec' })
+      unshelved = file_hash('rail.shp', mimetype: 'application/vnd.shp', shelve: false)
+      dsa = FakeDsa.new.add(build_dro(files: [location_based, unshelved]))
+      context = build_context(dsa:, transport:, execute: true)
+      expect { context.files.fetch(druid, ['rail.dbf'], source: 'stacks') }
+        .to raise_error(SdrOps::Skip, /isn't downloadable from stacks .*download: location-based/)
+      expect { context.files.fetch(druid, ['rail.shp'], source: 'stacks') }.to raise_error(SdrOps::Skip, /shelve: false/)
     end
   end
 

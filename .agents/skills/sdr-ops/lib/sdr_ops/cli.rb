@@ -29,7 +29,7 @@ module SdrOps
         --host accession|gis server for workspace transfers and exec (default accession)
         --format jsonl|csv   output format for listings (default jsonl)
 
-      Session:   login [--ttl 8h] | logout | whoami
+      Session:   login [--ttl 8h] [--stacks] | logout | whoami
       Inspect:   status DRUID... | show DRUID [--version N] [--public] | files DRUID [--workspace]
                  workflows DRUID [--workflow WF] [--version N] | events DRUID [--type T]
       Find:      find [--source solr|workflows] [--workflow WF --step S --status S] [--error-match RE]
@@ -218,8 +218,16 @@ module SdrOps
     # --- session ----------------------------------------------------------------------------------------
 
     def login
-      options = parse { |opts, o| opts.on('--ttl DURATION') { o[:ttl] = it } }
+      options = parse do |opts, o|
+        opts.on('--ttl DURATION') { o[:ttl] = it }
+        opts.on('--stacks') { o[:stacks] = true }
+      end
       ttl = Credentials.parse_ttl(options[:ttl] || '8h')
+      if options[:stacks]
+        @output.emit(context.credentials.login_stacks(sunet: context.as, transport: context.transport, ttl:))
+        return EXIT[:ok]
+      end
+
       summary = context.credentials.login(sunet: context.as, transport: context.transport, ttl:)
       @output.emit(summary)
       warn_drift

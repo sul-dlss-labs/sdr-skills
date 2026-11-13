@@ -17,6 +17,7 @@ module SdrOps
       '.jpeg' => 'image/jpeg', '.png' => 'image/png', '.pdf' => 'application/pdf', '.zip' => 'application/zip'
     }.freeze
     FETCH_SOURCES = %w[preservation workspace stacks].freeze
+    STACKS_DOWNLOADS = %w[world stanford].freeze
     FILE_SET_TYPES = %w[attachment audio document file image media object page preview three_dimensional thumb
                         video].freeze
 
@@ -147,7 +148,10 @@ module SdrOps
       cocina = version ? @context.client.object(state.druid).version.find(version.to_i) : state.cocina
       files = select_files(state.druid, cocina, filenames, source)
       to = File.expand_path(to || File.join(@context.run_dir, 'downloads', Druid.bare(state.druid)))
-      plan = files.map { |f| { filename: f.filename, size: f.size, md5: md5_of(f), local_path: local_path(to, f.filename) } }
+      plan = files.map do |f|
+        item = { filename: f.filename, size: f.size, md5: md5_of(f), local_path: local_path(to, f.filename) }
+        source == 'stacks' ? item.merge(stacks_token: f.access.download != 'world') : item
+      end
       send(:"fetch_from_#{source}", state.druid, files, plan, version) if @context.execute?
       @context.report(druid: state.druid, action: 'files.fetch', result: @context.execute? ? 'ok' : 'planned',
                       args: { source:, version:, to: },
@@ -387,10 +391,10 @@ module SdrOps
       when 'stacks'
         chosen.select! { |file| stacks_downloadable?(file) } if filenames.empty?
         chosen.each do |file|
-          unless stacks_downloadable?(file)
-            raise Skip,
-                  "#{file.filename} isn't world-downloadable from stacks; use --source preservation"
-          end
+          next if stacks_downloadable?(file)
+
+          raise Skip, "#{file.filename} isn't downloadable from stacks (shelve: #{file.administrative.shelve}, " \
+                      "download: #{file.access.download}); use --source preservation"
         end
       end
       raise Skip, "#{druid}: no files to fetch from #{source}" if chosen.empty?
@@ -398,8 +402,11 @@ module SdrOps
       chosen
     end
 
+    # World-downloadable files need no credentials; Stanford-only ones need a stacks service token
+    # (`login --stacks`), which stacks treats like a Stanford user. Location-restricted and no-download files
+    # can't be fetched from stacks this way.
     def stacks_downloadable?(file)
-      file.administrative.shelve && file.access.download == 'world'
+      file.administrative.shelve && STACKS_DOWNLOADS.include?(file.access.download)
     end
 
     def fetch_from_preservation(druid, _files, plan, version)
@@ -416,7 +423,8 @@ module SdrOps
     end
 
     def fetch_from_stacks(druid, _files, plan, version)
-      Downloads.from_stacks(@context.environment, druid, plan, version:)
+      token = @context.credentials.stacks_token! if plan.any? { it[:stacks_token] }
+      Downloads.from_stacks(@context.environment, druid, plan, version:, token:)
     end
 
     # The bytes for a new or replaced file: a local path or a string.

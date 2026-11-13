@@ -6,6 +6,8 @@ module SdrOps
   module Downloads
     # An HTTP 404.
     class NotFound < Error; end
+    # An HTTP 401 or 403.
+    class Forbidden < Error; end
 
     STACKS_CACHE_MINUTES = 10
 
@@ -18,13 +20,19 @@ module SdrOps
       "#{environment.stacks_url}/#{path}"
     end
 
-    # Only works for shelved, world-downloadable files; stanford-only files need a browser session on stacks.
-    def from_stacks(environment, druid, items, version: nil)
+    # Shelved files from stacks over HTTP. Items marked :stacks_token (Stanford-only files) are sent with the stacks
+    # service token from `login --stacks`; world-downloadable ones are fetched anonymously. Stacks counts each of
+    # these as a download in its metrics.
+    def from_stacks(environment, druid, items, version: nil, token: nil)
       items.each do |item|
-        http(stacks_url(environment, druid, item[:filename], version:), item[:local_path])
+        headers = item[:stacks_token] ? { 'Authorization' => "Bearer #{token || raise(AuthError, 'No stacks token')}" } : {}
+        http(stacks_url(environment, druid, item[:filename], version:), item[:local_path], headers:)
         verify!(item)
       rescue NotFound => e
         raise explain_stacks_not_found(environment, druid, item[:filename], e)
+      rescue Forbidden => e
+        raise Error, "#{e.message}. A stacks service token has Stanford-level access only; if this file is " \
+                     'Stanford-only, check that `login --stacks` is current. Otherwise use --source preservation.'
       end
     end
 
@@ -86,18 +94,25 @@ module SdrOps
       problems
     end
 
-    def http(url, local_path, redirects: 5)
+    # Headers (e.g. Authorization) are only sent to the original host, never to a redirect elsewhere. A redirect
+    # to stacks' login page means the file needs credentials that weren't sent.
+    def http(url, local_path, headers: {}, redirects: 5)
       uri = URI(url)
       FileUtils.mkdir_p(File.dirname(local_path))
       Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https') do |http|
-        http.request(Net::HTTP::Get.new(uri)) do |response|
+        http.request(Net::HTTP::Get.new(uri, headers)) do |response|
           case response
           when Net::HTTPSuccess
             File.open(local_path, 'wb') { |file| response.read_body { |chunk| file.write(chunk) } }
           when Net::HTTPRedirection
             raise Error, "Too many redirects fetching #{url}" if redirects.zero?
 
-            return http(URI.join(url, response['location']).to_s, local_path, redirects: redirects - 1)
+            target = URI.join(url, response['location'])
+            raise Forbidden, "#{url} redirected to a login page" if target.path.start_with?('/file/auth/', '/auth/')
+
+            same_host = target.host == uri.host
+            return http(target.to_s, local_path, headers: same_host ? headers : {}, redirects: redirects - 1)
+          when Net::HTTPUnauthorized, Net::HTTPForbidden then raise Forbidden, "#{url} returned HTTP #{response.code}"
           when Net::HTTPNotFound then raise NotFound, "#{url} returned HTTP 404"
           else raise Error, "#{url} returned HTTP #{response.code}"
           end

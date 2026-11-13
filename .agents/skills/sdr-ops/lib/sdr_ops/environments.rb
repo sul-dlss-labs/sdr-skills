@@ -3,7 +3,8 @@
 # Inspect and change objects in the Stanford Digital Repository (see lib/sdr_ops.rb).
 module SdrOps
   # Where things live in each SDR environment. See references/environments.md.
-  Environment = Data.define(:name, :dsa_url, :dsa_host, :workspace_hosts, :purl_url, :stacks_url, :argo_url) do
+  Environment = Data.define(:name, :dsa_url, :dsa_host, :workspace_hosts, :purl_url, :stacks_url, :stacks_host,
+                            :argo_url) do
     def workspace_host(profile)
       workspace_hosts.fetch(profile) do
         raise UsageError, "Unknown --host #{profile.inspect}; expected one of #{workspace_hosts.keys.join(', ')}"
@@ -20,6 +21,7 @@ module SdrOps
                          'gis' => 'kurma-robots-prod-01.stanford.edu' },
       purl_url: 'https://purl.stanford.edu',
       stacks_url: 'https://stacks.stanford.edu',
+      stacks_host: 'sul-stacks-prod-a.stanford.edu',
       argo_url: 'https://argo.stanford.edu'
     ),
     'stage' => Environment.new(
@@ -30,6 +32,7 @@ module SdrOps
                          'gis' => 'kurma-robots-stage-01.stanford.edu' },
       purl_url: 'https://sul-purl-stage.stanford.edu',
       stacks_url: 'https://stacks-stage.stanford.edu',
+      stacks_host: 'sul-stacks-stage.stanford.edu',
       argo_url: 'https://argo-stage.stanford.edu'
     ),
     'qa' => Environment.new(
@@ -41,12 +44,15 @@ module SdrOps
       # QA uses stage purl and stacks; the access team doesn't maintain a QA environment.
       purl_url: 'https://sul-purl-stage.stanford.edu',
       stacks_url: 'https://stacks-stage.stanford.edu',
+      stacks_host: 'sul-stacks-stage.stanford.edu',
       argo_url: 'https://argo-qa.stanford.edu'
     )
   }.freeze
 
   DSA_USER = 'dor_services'
   DSA_APP_DIR = '/opt/app/dor_services/dor_services/current'
+  STACKS_USER = 'stacks'
+  STACKS_APP_DIR = '/opt/app/stacks/stacks/current'
   WORKSPACE_USER = 'lyberadmin'
   APP_DIRS = {
     'accession' => '/opt/app/lyberadmin/common-accessioning/current',

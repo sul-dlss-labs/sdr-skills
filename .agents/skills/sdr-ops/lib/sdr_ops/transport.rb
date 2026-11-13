@@ -50,9 +50,12 @@ module SdrOps
     # Run a script from remote/ on the DSA host with `bin/rails runner`. The script arrives on stdin.
     # @return [Array<Hash>] parsed SDR_OPS_RESULT / SDR_OPS_ROW lines, in order
     def dsa_runner(script, env: {})
-      command = "cd #{DSA_APP_DIR} && #{env_assignments(env.merge('RAILS_ENV' => 'production'))} " \
-                "bin/rails runner #{Shellwords.escape('eval($stdin.read)')}"
-      run_remote_script(user: DSA_USER, host: environment.dsa_host, command:, script:)
+      rails_runner(user: DSA_USER, host: environment.dsa_host, app_dir: DSA_APP_DIR, script:, env:)
+    end
+
+    # Run a script from remote/ in the stacks app on a stacks host (`login --stacks`), the same way.
+    def stacks_runner(script, env: {})
+      rails_runner(user: STACKS_USER, host: environment.stacks_host, app_dir: STACKS_APP_DIR, script:, env:)
     end
 
     # Run a script from remote/ with a robot app's bundle on a workspace host. The script arrives on stdin.
@@ -112,6 +115,12 @@ module SdrOps
     end
 
     private
+
+    def rails_runner(user:, host:, app_dir:, script:, env:)
+      command = "cd #{app_dir} && #{env_assignments(env.merge('RAILS_ENV' => 'production'))} " \
+                "bin/rails runner #{Shellwords.escape('eval($stdin.read)')}"
+      run_remote_script(user:, host:, command:, script:)
+    end
 
     def run!(argv, failure)
       result = @shell.run(*argv)

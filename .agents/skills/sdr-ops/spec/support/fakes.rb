@@ -65,29 +65,37 @@ class FakeTransport
     @script_results
   end
 
+  def stacks_runner(script, env: {})
+    @scripts << { profile: :stacks, script: File.basename(script), env: }
+    @script_results
+  end
+
   def remove_remote(_profile, path)
     @removed << path
   end
 end
 
 class FakeCredentials
-  attr_accessor :drift
+  attr_accessor :drift, :stacks_token
 
-  def initialize(drift: false)
+  def initialize(drift: false, stacks_token: nil)
     @drift = drift
+    @stacks_token = stacks_token
   end
+
+  def stacks_token! = @stacks_token || raise(SdrOps::AuthError, 'No stage stacks token: run `login --stacks`.')
 
   def cocina_drift? = @drift
   def state = { 'dsa_cocina_models_version' => @drift ? '0.0.1' : Cocina::Models::VERSION }
 end
 
 module ContextHelpers
-  def build_context(dsa:, execute: false, transport: FakeTransport.new, output: nil, **)
+  def build_context(dsa:, execute: false, transport: FakeTransport.new, output: nil, credentials: FakeCredentials.new, **)
     @out = StringIO.new
     @err = StringIO.new
     SdrOps::Context.new(env: 'stage', execute:, as: 'jdoe', run_dir: File.join(@tmpdir, 'run'),
                         output: output || SdrOps::Output.new(out: @out, err: @err), transport:,
-                        credentials: FakeCredentials.new, client: dsa, **)
+                        credentials:, client: dsa, **)
   end
 
   def emitted

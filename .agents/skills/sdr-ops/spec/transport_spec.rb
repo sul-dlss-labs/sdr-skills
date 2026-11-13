@@ -28,6 +28,15 @@ RSpec.describe SdrOps::Transport do
     expect(records).to eq [{ 'druid' => 'bc641kr2427' }, { 'done' => true }]
   end
 
+  it 'runs the stacks token script in the stacks app on the stacks host' do
+    shell.respond('ssh', stdout: "SDR_OPS_RESULT {\"token\":\"x\"}\n")
+    transport.stacks_runner(File.join(SdrOps::REMOTE_DIR, 'mint_stacks_token.rb'), env: { 'SDR_OPS_SUB' => 'jdoe' })
+
+    call = shell.calls.last
+    expect(call[:argv][5]).to eq 'stacks@sul-stacks-prod-a.stanford.edu'
+    expect(Shellwords.split(call[:argv].last).last).to include('cd /opt/app/stacks/stacks/current', 'bin/rails runner')
+  end
+
   it 'raises with the remote error when a script fails' do
     shell.respond('ssh', stderr: "boom\n", exitstatus: 1)
     expect { transport.dsa_runner(File.join(SdrOps::REMOTE_DIR, 'find.rb')) }.to raise_error(SdrOps::RemoteError, /boom/)

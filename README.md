@@ -6,7 +6,7 @@ There is one skill so far, **[sdr-ops](.agents/skills/sdr-ops/SKILL.md)**: a com
 
 ## Using it
 
-Requirements: Ruby 3.4+, the Stanford VPN, a Kerberos ticket (`kinit`), and ssh to SDR servers through `dlss-jump` (see the DeveloperPlaybook ssh setup). `login` and `find` also need ssh access as `dor_services` on the DSA hosts.
+Requirements: Ruby 3.4+, the Stanford VPN, a Kerberos ticket (`kinit`), and ssh to SDR servers through `dlss-jump` (see the DeveloperPlaybook ssh setup). `login` and `find` also need ssh access as `dor_services` on the DSA hosts; the optional `login --stacks` (for fetching Stanford-only files from stacks) needs ssh access as `stacks` on the stacks hosts.
 
 1. Install the gems:
 

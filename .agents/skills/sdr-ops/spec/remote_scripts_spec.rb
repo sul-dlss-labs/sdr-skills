@@ -49,6 +49,28 @@ RSpec.describe 'remote scripts' do # rubocop:disable RSpec/DescribeClass
     end
   end
 
+  describe 'mint_stacks_token.rb' do
+    let(:secret) { 'not-the-real-secret' }
+
+    def settings(value) = Struct.new(:service_token).new(Struct.new(:hmac_secret).new(value))
+
+    it "mints an HS256 service token with an expiry, signed with stacks' service token secret" do
+      stub_const('Settings', settings(secret))
+      output = run_script('mint_stacks_token.rb', 'SDR_OPS_SUB' => 'jdoe', 'SDR_OPS_TTL' => '3600')
+      result = records(output, 'SDR_OPS_RESULT ').first
+
+      claims = JWT.decode(result['token'], secret, true, algorithm: 'HS256').first
+      expect(claims).to include('sub' => 'jdoe', 'iss' => 'sdr-ops')
+      expect(claims['exp'] - claims['iat']).to eq 3600
+    end
+
+    it 'refuses when stacks has no service token secret, without printing anything secret' do
+      stub_const('Settings', settings(nil))
+      expect { run_script('mint_stacks_token.rb', 'SDR_OPS_SUB' => 'jdoe', 'SDR_OPS_TTL' => '3600') }
+        .to raise_error(SystemExit)
+    end
+  end
+
   describe 'find.rb' do
     let(:solr_calls) { [] }
     let(:docs) do

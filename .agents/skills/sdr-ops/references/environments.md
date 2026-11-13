@@ -10,6 +10,7 @@
 | Workspace host, `--host gis` (GDAL, Python 3.12, `uv`) | `kurma-robots-prod-01` | `kurma-robots-stage-01` | `kurma-robots-qa-01` |
 | Purl | `purl.stanford.edu` | `sul-purl-stage.stanford.edu` | stage's |
 | Stacks | `stacks.stanford.edu` | `stacks-stage.stanford.edu` | stage's |
+| Stacks host (`login --stacks`) | `sul-stacks-prod-a` | `sul-stacks-stage` | stage's |
 
 All hosts are `*.stanford.edu`. Stage and QA share one `/dor` NFS export; prod has its own.
 
@@ -19,6 +20,7 @@ All hosts are `*.stanford.edu`. Stage and QA share one `/dor` NFS export; prod h
 - **DSA host**, as `dor_services`, in `/opt/app/dor_services/dor_services/current` via `bin/rails runner` with `RAILS_ENV=production`:
   - `remote/mint_token.rb` (`login`);
   - `remote/find.rb` (`find`), which is read-only and runs inside ActiveRecord's write prevention.
+- **Stacks host**, as `stacks`, in `/opt/app/stacks/stacks/current` via `bin/rails runner`: `remote/mint_stacks_token.rb` (`login --stacks`), which mints a stacks service token for downloading Stanford-only files.
 - **Workspace host**, as `lyberadmin`:
   - file bytes into and out of `/dor/workspace/<druid tree>/content/` (`files add/replace`, `files fetch --source workspace`, `pull workspace:…`);
   - the per-run scratch directory `/tmp/sdr-ops-<sunet>-<run>/` (`push`, `pull`, `exec`).
@@ -32,6 +34,7 @@ All hosts are `*.stanford.edu`. Stage and QA share one `/dor` NFS export; prod h
 - A Kerberos ticket (`kinit`).
 - ssh through `dlss-jump` with GSSAPI, per the DeveloperPlaybook ssh configuration. A ControlMaster setup saves re-authenticating for each file.
 - ssh access as `dor_services` on the DSA hosts, for `login` and `find`, and as `lyberadmin` on the workspace hosts, for file transfers.
+- Optionally, ssh access as `stacks` on the stacks hosts, for `login --stacks`.
 
 Preflight (`login`, `find`) checks `klist -s` and a non-interactive `ssh … true`, and says which part failed.
 
@@ -39,6 +42,7 @@ Preflight (`login`, `find`) checks `klist -s` and a non-interactive `ssh … tru
 
 - `login` mints `{sub: <sunet>, exp: now + ttl}` signed with DSA's own secret, the same way DSA's `generate_token` does, but with an expiry. DSA's JWT check enforces the expiry.
 - Tokens live in the macOS Keychain (service `sdr-ops-<env>-dsa`) or libsecret.
+- `login --stacks` mints a separate stacks service token (`sdr-ops-<env>-stacks`) the same way, signed with stacks' service token secret. Stacks gives it the same access as a Stanford user. It's only needed to fetch Stanford-only files from stacks.
 - `~/.config/sdr-ops/<env>.json` holds only non-secret details: subject, expiry, and DSA's cocina-models version at login.
 - Because the token's `sub` is the user, DSA records them as `invoked_by` on every event it creates.
 

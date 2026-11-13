@@ -36,6 +36,7 @@ sdr-skills/
       inspect.rb  find.rb  versions.rb  workflows.rb  files.rb  file_sets.rb  collections.rb  registration.rb  cloner.rb  downloads.rb
     remote/                      # the only code that runs on servers
       mint_token.rb              # DSA host: issue a short-lived token
+      mint_stacks_token.rb       # stacks host: issue a short-lived stacks service token (optional)
       find.rb                    # DSA host: read-only Solr / workflow-table queries
       fetch_preserved.rb         # workspace host: read-only preservation download
     references/
@@ -78,6 +79,7 @@ Everything runs on the laptop except the following. These are done over ssh/scp 
 |---|---|---|---|
 | Mint a DSA token (`login`) | `dor-services-app-{prod,stage,qa}-a` | `dor_services` | `remote/mint_token.rb` via `bin/rails runner` in `/opt/app/dor_services/dor_services/current`, with `RAILS_ENV=production` as the DSA README does |
 | `find` | same | same | `remote/find.rb` via `bin/rails runner`, wrapped in `ActiveRecord::Base.while_preventing_writes` so it cannot write |
+| Mint a stacks service token (`login --stacks`), optional | `sul-stacks-prod-a` / `sul-stacks-stage` / stage's | `stacks` | `remote/mint_stacks_token.rb` via `bin/rails runner` in `/opt/app/stacks/stacks/current` |
 | Stage file bytes into `/dor/workspace`, pull files from it, `exec` | `common-accessioning-{prod,stage,qa}-a` (default), or `kurma-robots-{prod,stage,qa}-01` with `--host gis` (adds GDAL, Python 3.12, `uv`) | `lyberadmin` | `scp` / `ssh` into the druid's workspace directory, or a per-run scratch directory `/tmp/sdr-ops-<user>-<run_id>/` |
 | Preservation file fetch | same as workspace transfers | `lyberadmin` | `remote/fetch_preserved.rb` run with the app's bundle (`bundle exec ruby`, `config/boot`), using the app's already-configured preservation client; writes to the run's scratch directory, then `scp` back |
 
@@ -108,6 +110,12 @@ Other commands load the token from the keychain into the in-process client confi
 - `sdr-ops logout --env ENV` deletes the keychain entry. Otherwise the token simply expires; revocation never requires rotating DSA's shared secret.
 
 A possible follow-up is a small DSA PR so the existing `generate_token` task accepts the name and TTL as arguments and adds `exp`. `login` could then call `bin/rake 'generate_token[<sunet>,8h]'` instead of shipping `mint_token.rb`.
+
+#### Stacks service tokens (`sdr-ops login --stacks`)
+
+Stacks accepts service tokens: HS256 JWTs signed with `Settings.service_token.hmac_secret`, minted by its own `bin/rails generate_token` ([jwt.rake](https://github.com/sul-dlss/stacks/blob/main/lib/tasks/jwt.rake)). It decodes them with `JWT.decode(token, secret, true, algorithm: 'HS256')` (jwt 3.3.0), which enforces `exp`, and gives a service user the same access as a Stanford user ([user.rb](https://github.com/sul-dlss/stacks/blob/main/app/models/user.rb)). Denied service users get a 403 rather than a redirect to the login page.
+
+`login --stacks` mints one the same way as the DSA token. It runs `remote/mint_stacks_token.rb` on the stacks host as `stacks`, and the token gets the same TTL rules, with `{sub: <sunet>, exp: now + ttl, iss: 'sdr-ops'}`. It goes in its own keychain entry (`sdr-ops-<env>-stacks`), and its expiry goes in the state file. It's needed only for `files fetch --source stacks` of Stanford-only files, for example to check derivatives that aren't preserved after accessioning has pruned the workspace. It is sent only to the stacks host, never across a redirect to another host. Stacks counts each fetch as a download in its metrics.
 
 ### How a command runs
 
@@ -273,7 +281,7 @@ This applies to `files …` and `collection …`:
 
 | Command | Behaviour |
 |---|---|
-| `files fetch [FILENAME...] [--version N] [--source preservation\|workspace\|stacks] [--to DIR]` | Downloads to `--to` (default `<run>/downloads/<druid>/`). **Preservation** (default): `remote/fetch_preserved.rb` on the workspace host calls `Preservation::Client.objects.content_to_file(…, expected_md5:)`, then the file is `scp`'d back and its md5 re-checked locally. **Workspace**: `scp` from the druid's workspace, for files the robots have already staged there. **Stacks**: a direct download, which only works for world-downloadable shelved files; stanford-only files need a browser session there. |
+| `files fetch [FILENAME...] [--version N] [--source preservation\|workspace\|stacks] [--to DIR]` | Downloads to `--to` (default `<run>/downloads/<druid>/`). **Preservation** (default): `remote/fetch_preserved.rb` on the workspace host calls `Preservation::Client.objects.content_to_file(…, expected_md5:)`, then the file is `scp`'d back and its md5 re-checked locally. **Workspace**: `scp` from the druid's workspace, for files the robots have already staged there. **Stacks**: an HTTP download of shelved files, as users get them. World-downloadable files need no credentials; Stanford-only files are sent with the stacks service token from `login --stacks`. Location-restricted and no-download files are refused. |
 | `files add PATH... [--filename NAME] [--like FILENAME \| --file-set ID \| --new-file-set LABEL] [--mimetype T] [--use U] [--preserve/--shelve/--publish BOOL]` | Computes size, md5, and sha1 locally. Copies the bytes into `/dor/workspace/<druid tree>/content/<filename>` over `scp` and verifies the md5 on the host. Builds the cocina File, copying `access`, `administrative`, and `use` from the `--like` sibling, and adds it to the sibling's file set (or the given one). Refuses if the filename already exists (use `replace`). |
 | `files replace FILENAME PATH` | Keeps the existing entry's identifier and attributes, stages the new bytes the same way, and updates size and digests. |
 | `files remove FILENAME...` | Removes entries from structural metadata. Empty file sets are kept unless `--drop-empty-file-sets` is given. |
@@ -475,6 +483,7 @@ Build-order steps 1–6 are implemented in `.agents/skills/sdr-ops` (2026-11-12)
   - Precedent: infrastructure-integration-test keeps laptop DSA tokens, but only for stage and qa, and they never expire.
 - **Minting:** keep `remote/mint_token.rb`, or extend DSA's `generate_token` task to take a name and TTL?
 - **Access to the DSA host:** `login` and `find` need ssh access as `dor_services` on `dor-services-app-*-a`. Preflight checks this, but it hasn't been confirmed for everyone who would use `sdr-ops`.
+- **Stacks service tokens:** `login --stacks` needs ssh access as `stacks` on the stacks hosts, and a `service_token.hmac_secret` configured in each environment's stacks. Neither has been confirmed yet. Is a personal token with Stanford-level read access acceptable there?
 - **Default host for workspace transfers:** is `common-accessioning-<env>-a` acceptable?
 - **Workflow creation attribution:** creating a workflow writes no event and takes no note, so only the ledger records who did it.
 - **Installation:** confirm the user-level skills directory convention for each agent we support beyond Claude Code, and whether to also publish a Claude Code plugin.

@@ -46,7 +46,7 @@
 - `files fetch DRUID [FILE...] [--source preservation|workspace|stacks] [--version N] [--to DIR] --execute` downloads files (a dry run without `--execute`). The default destination is `<run>/downloads/<druid>/`, and every download is checked against cocina's md5.
   - `preservation` (default) covers any preserved file in any version; it goes through the workspace host.
   - `workspace` covers files the robots have already staged, e.g. after `fetch-files` ran.
-  - `stacks` covers only world-downloadable shelved files. Stacks caches each object's public cocina for 10 minutes, so files from a version published since stacks last served the object can 404 for up to 10 minutes; `files fetch` says so when purl's published version lists the file.
+  - `stacks` covers shelved files that are world-downloadable or Stanford-only, as users get them. Stanford-only files need a stacks service token: ask the user to run `sdr-ops --env ENV login --stacks`. Location-restricted and no-download files are refused. This is the way to check derivatives that aren't preserved (e.g. geo `.fgb`/`.pmtiles`) once accessioning has pruned the workspace. Each fetch counts as a download in stacks' metrics. Stacks caches each object's public cocina for 10 minutes, so files from a version published since stacks last served the object can 404 for up to 10 minutes; `files fetch` says so when purl's published version lists the file.
 
 ## File sets
 

@@ -55,6 +55,48 @@ RSpec.describe SdrOps::Credentials do
     expect { credentials.token! }.to raise_error(SdrOps::AuthError, /expired/)
   end
 
+  describe 'stacks service tokens' do
+    let(:keychain) do
+      Class.new do
+        attr_reader :store_calls
+
+        def initialize = (@store_calls = []) && (@secrets = {})
+        def store(service, account, secret) = (@store_calls << [service, account]) && (@secrets[service] = secret)
+        def fetch(service) = @secrets[service]
+        def delete(service) = @secrets.delete(service)
+      end.new
+    end
+
+    it 'mints one on the stacks host and keeps it apart from the DSA token' do
+      credentials.login(sunet: 'jdoe', transport:)
+      stacks = jwt(sub: 'jdoe', exp: Time.now.to_i + 3600)
+      transport.script_results = [{ 'token' => stacks }]
+      summary = credentials.login_stacks(sunet: 'jdoe', transport:, ttl: 3600)
+
+      expect(transport.scripts.last).to eq(profile: :stacks, script: 'mint_stacks_token.rb',
+                                           env: { 'SDR_OPS_SUB' => 'jdoe', 'SDR_OPS_TTL' => 3600 })
+      expect(keychain.store_calls.last).to eq %w[sdr-ops-stage-stacks jdoe]
+      expect(credentials.stacks_token!).to eq stacks
+      expect(credentials.token!).to eq token
+      expect(summary).to include(sub: 'jdoe', expired: false, stacks_expires_at: a_string_matching(/\A\d{4}-/))
+      expect(credentials.state['dsa_cocina_models_version']).to eq Cocina::Models::VERSION
+      expect(JSON.generate(summary) + File.read(File.join(@tmpdir, 'state', 'stage.json'))).not_to include(stacks)
+    end
+
+    it 'says how to get one when it is missing or expired' do
+      expect { credentials.stacks_token! }.to raise_error(SdrOps::AuthError, /No stage stacks token: run .*login --stacks/)
+      keychain.store('sdr-ops-stage-stacks', 'jdoe', jwt(sub: 'jdoe', exp: Time.now.to_i - 10))
+      expect { credentials.stacks_token! }.to raise_error(SdrOps::AuthError, /stacks token has expired/)
+    end
+
+    it 'logs out of both' do
+      keychain.store('sdr-ops-stage-dsa', 'jdoe', token)
+      keychain.store('sdr-ops-stage-stacks', 'jdoe', token)
+      credentials.logout
+      expect([keychain.fetch('sdr-ops-stage-dsa'), keychain.fetch('sdr-ops-stage-stacks')]).to eq [nil, nil]
+    end
+  end
+
   it 'detects cocina-models drift from the version DSA reported at login' do
     transport.script_results = [{ 'token' => token, 'cocina_models_version' => '0.1.0' }]
     credentials.login(sunet: 'jdoe', transport:)
