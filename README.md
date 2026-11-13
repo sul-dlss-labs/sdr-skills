@@ -19,7 +19,7 @@ Requirements: Ruby 3.4+, the Stanford VPN, a Kerberos ticket (`kinit`), and ssh 
    - Elsewhere, symlink the skill into your agent's user-level skills directory:
 
      ```bash
-     ln -s "$PWD/.agents/skills/sdr-ops" ~/.claude/skills/sdr-ops
+     mkdir -p ~/.claude/skills && ln -s "$PWD/.agents/skills/sdr-ops" ~/.claude/skills/sdr-ops
      ```
 
      Other agents (e.g. Codex) have their own skills directories; check their docs.
