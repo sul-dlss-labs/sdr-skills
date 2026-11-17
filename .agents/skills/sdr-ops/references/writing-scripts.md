@@ -31,7 +31,7 @@ end
   - It honours `--limit` and stops after `--max-failures` consecutive errors.
   - It records each item as `ok`, `skipped` (raise `SdrOps::Skip, 'why'` to skip one), `stopped` (open version exists), or `error`.
   - It ends with a summary.
-- `sdr.versions`: `open(druid, description:, keep_open: false) { |state| … }`, `close(druid, description: nil, accession: true, user_versions: nil, lane: nil)`, `discard(druid)`.
+- `sdr.versions`: `open(druid, description:, keep_open: false) { |state| … }`, `close(druid, description: nil, accession: true, user_versions: nil, lane: nil)`, `discard(druid)`, `adopt(druid, opened_by:, description:)`, `rename(druid, description:)` (the run's open version).
 - `sdr.files`:
   - `add(druid, path: | content:, filename:, like:, file_set:, new_file_set:, file_set_type:, mimetype:, use:, preserve:, shelve:, publish:, access_from_object:, access:, sdr_generated_text:)` — `access:` is a file access hash (e.g. `{ view: 'world', download: 'world' }`); `file_set_type:` takes short names (`object`, `preview`, `image`, `file`, …)
   - `replace(druid, filename, path: | content:, mimetype:)`

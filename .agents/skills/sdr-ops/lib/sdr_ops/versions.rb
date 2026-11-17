@@ -60,6 +60,31 @@ module SdrOps
       state
     end
 
+    # Change the description of a version this run opened (or adopted) while it is still open. Useful when the
+    # work in the version grows beyond what it was opened for and whatever closes it won't pass a description.
+    def rename(druid, description:)
+      raise UsageError, 'rename needs a description' if description.to_s.strip.empty?
+
+      state = @context.fresh_state(druid)
+      before = state.summary
+      raise Skip, "#{state.druid} has no open version to rename" unless state.open?
+
+      raise_if_open!(state) unless state.own_version?
+      if state.description == description
+        raise Skip, "#{state.druid} version #{state.version} already has the description #{description.inspect}"
+      end
+
+      @context.ensure_mutations_allowed!
+      if @context.execute?
+        @context.client.object(state.druid).version.update_description(description:, user_name: @context.as)
+      else
+        @context.mark_planned(state.druid)
+      end
+      state.description = description
+      report(state, 'version.rename', before:, args: { description: })
+      state
+    end
+
     def close(druid, description: nil, accession: true, user_versions: nil, lane: nil)
       state = @context.fresh_state(druid)
       before = state.summary

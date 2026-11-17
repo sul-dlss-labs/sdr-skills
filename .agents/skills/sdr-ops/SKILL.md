@@ -40,7 +40,7 @@ Global options can go anywhere: `--env`, `--execute`, `--run DIR`, `--druids FIL
 |---|---|---|
 | Who/what/where | `status DRUID...`, `show DRUID [--public]`, `files DRUID [--workspace]`, `workflows DRUID`, `events DRUID` | read-only |
 | Find objects | `find --workflow WF --step S --status error [--error-match RE] --out items.csv` | [discovery.md](references/discovery.md) |
-| Versions | `version open --description TEXT`, `version close`, `version discard` | [versions.md](references/versions.md) |
+| Versions | `version open --description TEXT`, `version close`, `version discard`, `version adopt --opened-by WHO --description TEXT`, `version rename --description TEXT` (the run's open version) | [versions.md](references/versions.md) |
 | Workflows | `workflow run WF`, `workflow reset WF STEP`, `workflow set WF STEP STATUS`, `workflow skip-all WF --note TEXT`, `check --until WF:complete` | [workflows.md](references/workflows.md) |
 | Files | `files fetch`, `files add`, `files replace`, `files remove`, `files set`, `files move`, `files make-readable` | [files.md](references/files.md) |
 | Description | `descriptive.update` (scripts only) | [descriptive.md](references/descriptive.md) |

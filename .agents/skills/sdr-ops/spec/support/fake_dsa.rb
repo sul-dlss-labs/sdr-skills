@@ -153,6 +153,14 @@ class FakeDsa
       'closed'
     end
 
+    def update_description(description:, user_name: nil)
+      @dsa.log(@druid, :update_description, description:, user_name:)
+      raise Dor::Services::Client::ConflictResponse.new(response: nil, errors: [{ 'title' => 'no open version' }]) unless rec.open
+
+      rec.description = description
+      nil
+    end
+
     def discard
       @dsa.log(@druid, :discard)
       rec.history.delete(rec.version)
