@@ -8,6 +8,7 @@
   - Closing starts `accessionWF` unless `--no-accession` is given.
   - A `--description` given at close replaces the opening description.
   - User versions default to `update_if_existing` on the server; `--user-versions none|new|update|update_if_existing` overrides that.
+- **Rename** (`version rename --description TEXT`) replaces an open version's description; DSA returns a 409 if no version is open. `sdr-ops` sends the user as `user_name`.
 - **Discard** (`version discard`) requires the head version to be open, not version 1, and the last closed version to have cocina.
   - The open version's cocina is destroyed.
   - DSA's cleanup then removes only `accessionWF`, `assemblyWF`, and `versioningWF` steps for that version, plus the workspace and export directories. Other workflows' steps, e.g. gisDerivativeWF, are left behind; the dry run lists them.
@@ -24,6 +25,9 @@
   - What to do about it is the user's decision: `version close` (keeping its description), `version discard`, or finishing or skipping the workflow running in it (see [workflows.md](workflows.md)).
 - `version close` and `version discard` act on whatever version is open, whoever opened it. Their output shows its description and who opened it.
 - `version adopt DRUID... --opened-by WHO --description TEXT` (`versions.adopt(druid, opened_by:, description:)` in scripts, where `description:` can be a Regexp) makes someone else's open version count as this run's, so content changes can be made in it. It refuses unless the version's opener and description both match, and the ledger records the adoption so later passes see the version as the run's own. Use it only when the user has decided that version should be finished rather than closed or discarded as is (e.g. a migration's version whose files need correcting before it can close).
+- `version rename DRUID... --description TEXT` (`versions.rename(druid, description:)` in scripts) changes an open version's description while it is still open: use it when the work in a version grows beyond what it was opened for, especially when whatever closes it passes no description (e.g. gisDerivativeWF's `start-accession-workflow`), so renaming at close isn't possible.
+  - Like content changes, it needs an open version this run opened or adopted; otherwise the item is `stopped` (or `skipped` if nothing is open). Ownership is by version number, so a renamed version stays the run's own.
+  - It's a no-op (`skipped`) when the description already matches. The ledger row's `before`/`after` show the old and new description, and later calls on the same item see the new one.
 
 ## Audit trail
 

@@ -115,6 +115,86 @@ RSpec.describe SdrOps::Versions do
     end
   end
 
+  describe '#rename' do
+    let(:new_description) { 'Add code page file and regenerate derivatives' }
+
+    def ledger_row = context.ledger.rows.reverse.find { it['action'] == 'version.rename' }
+
+    context 'when dry run' do
+      it 'plans the new description in a planned version, and later calls see it' do
+        context.versions.open(druid, description: 'Regenerate derivatives') do
+          state = context.versions.rename(druid, description: new_description)
+          expect(state.description).to eq new_description
+        end
+
+        expect(dsa.calls_for(:update_description)).to be_empty
+        expect(emitted.map { [it['action'], it['result']] })
+          .to eq [%w[version.open planned], %w[version.rename planned], %w[version.close planned]]
+        expect(ledger_row).to include('dry_run' => true, 'args' => { 'description' => new_description },
+                                      'before' => { 'version' => 2, 'open' => true,
+                                                    'description' => 'Regenerate derivatives' },
+                                      'after' => { 'version' => 2, 'open' => true, 'description' => new_description })
+        expect(emitted.last['before']['description']).to eq new_description
+      end
+    end
+
+    context 'when executing' do
+      let(:execute) { true }
+
+      before { context.versions.open(druid, description: 'Regenerate derivatives', keep_open: true) }
+
+      it 'updates the description of the version this run opened, as the run user' do
+        context.versions.rename(druid, description: new_description)
+
+        expect(dsa.calls_for(:update_description).map(&:last)).to eq [{ description: new_description, user_name: 'jdoe' }]
+        expect(dsa.record(druid).description).to eq new_description
+        expect(context.state(druid).description).to eq new_description
+        expect(ledger_row).to include('result' => 'ok', 'dry_run' => false,
+                                      'before' => include('description' => 'Regenerate derivatives'),
+                                      'after' => { 'version' => 2, 'open' => true, 'description' => new_description })
+      end
+
+      it 'is a no-op when the description already matches, and keeps ownership after a rename' do
+        context.versions.rename(druid, description: new_description)
+
+        expect { context.versions.rename(druid, description: new_description) }
+          .to raise_error(SdrOps::Skip, /already has the description/)
+        expect(dsa.calls_for(:update_description).size).to eq 1
+        expect(context.state(druid, refresh: true)).to be_own_version
+      end
+    end
+
+    context 'when the open version was opened by someone else' do
+      let(:execute) { true }
+      let(:dsa) do
+        FakeDsa.new.add(build_dro(version: 3), open: true, description: 'Regenerate derivatives',
+                                               events: [FakeDsa.new.event('version_open', who: 'gis-robot-suite', version: '3')])
+      end
+
+      it 'stops, as content changes do' do
+        expect { context.versions.rename(druid, description: new_description) }
+          .to raise_error(SdrOps::OpenVersionExists, /open version 3.*gis-robot-suite/)
+        expect(dsa.calls_for(:update_description)).to be_empty
+      end
+
+      it 'renames the version once the run has adopted it' do
+        context.versions.adopt(druid, opened_by: 'gis-robot-suite', description: 'Regenerate derivatives')
+        context.versions.rename(druid, description: new_description)
+
+        expect(dsa.record(druid).description).to eq new_description
+      end
+    end
+
+    it 'skips an object with no open version' do
+      expect { context.versions.rename(druid, description: new_description) }
+        .to raise_error(SdrOps::Skip, /no open version/)
+    end
+
+    it 'needs a description' do
+      expect { context.versions.rename(druid, description: ' ') }.to raise_error(SdrOps::UsageError)
+    end
+  end
+
   describe '#close' do
     let(:execute) { true }
     let(:dsa) { FakeDsa.new.add(build_dro(version: 2), open: true, description: 'Fix things') }

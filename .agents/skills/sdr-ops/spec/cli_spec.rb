@@ -48,6 +48,18 @@ RSpec.describe SdrOps::CLI do
     expect(dsa.calls_for(:open)).to be_empty
   end
 
+  it "renames an open version from an earlier invocation in the run, and stops on someone else's" do
+    cli('--env', 'stage', '--execute', 'version', 'open', druid, '--description', 'Regenerate derivatives')
+    expect(cli('--env', 'stage', '--execute', 'version', 'rename', druid, '--description', 'Add code page file')).to eq 0
+    expect(dsa.record(druid).description).to eq 'Add code page file'
+
+    dsa.record(druid).version = 3 # not a version the run opened
+    cli('--env', 'stage', '--execute', 'version', 'rename', druid, '--description', 'Something else')
+    expect(rows.find { it['result'] == 'stopped' }['message']).to include('already has open version 3')
+    expect(dsa.calls_for(:update_description).size).to eq 1
+    expect(cli('--env', 'stage', 'version', 'rename', druid)).to eq 2
+  end
+
   it 'requires --open when the run has no version of its own' do
     cli('--env', 'stage', 'files', 'remove', druid, 'rail.fgb')
     expect(rows.find { it['result'] == 'skipped' }['message']).to include('pass --open')

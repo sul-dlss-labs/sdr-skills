@@ -37,6 +37,7 @@ module SdrOps
       Versions:  version open DRUID... --description TEXT | version close DRUID... [--description TEXT]
                  [--no-accession] [--user-versions MODE] [--lane L] | version discard DRUID...
                  version adopt DRUID... --opened-by WHO --description TEXT   (make someone else's open version this run's)
+                 version rename DRUID... --description TEXT   (change the description of an open version this run opened or adopted)
       Workflows: workflow run WF DRUID... [--version N] [--lane L] | workflow set WF STEP STATUS DRUID... [--expect S]
                  workflow reset WF STEP DRUID... | workflow skip-all WF DRUID... --note TEXT
                  check --until WF[:STEP]:complete DRUID...
@@ -349,7 +350,12 @@ module SdrOps
         raise UsageError, 'version adopt needs --opened-by and --description' unless options[:opened_by] && options[:description]
 
         each_druid { |druid| context.versions.adopt(druid, **options) }
-      else raise UsageError, 'version needs open, close, discard, or adopt'
+      when 'rename'
+        options = parse { |opts, o| opts.on('--description TEXT') { o[:description] = it } }
+        raise UsageError, 'version rename needs --description' unless options[:description]
+
+        each_druid { |druid| context.versions.rename(druid, description: options[:description]) }
+      else raise UsageError, 'version needs open, close, discard, adopt, or rename'
       end
     end
 
