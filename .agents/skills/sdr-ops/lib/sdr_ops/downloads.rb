@@ -3,7 +3,7 @@
 module SdrOps
   # File downloads shared by `files fetch` and `clone`. Items are Hashes with :filename and :local_path, plus the
   # expected :md5 and optionally :sha1 and :size; every download is verified against whichever are present.
-  module Downloads
+  module Downloads # rubocop:disable Metrics/ModuleLength
     # An HTTP 404.
     class NotFound < Error; end
     # An HTTP 401 or 403.
@@ -23,11 +23,15 @@ module SdrOps
     # Shelved files from stacks over HTTP. Items marked :stacks_token (Stanford-only files) are sent with the stacks
     # service token from `login --stacks`; world-downloadable ones are fetched anonymously. Stacks counts each of
     # these as a download in its metrics.
-    def from_stacks(environment, druid, items, version: nil, token: nil)
+    #
+    # With `range:` (a ByteRange), only those bytes are requested. A partial copy can't be checked against cocina's
+    # md5, so it's checked against cocina's size instead: the total stacks reports in Content-Range must match.
+    def from_stacks(environment, druid, items, version: nil, token: nil, range: nil)
       items.each do |item|
         headers = item[:stacks_token] ? { 'Authorization' => "Bearer #{token || raise(AuthError, 'No stacks token')}" } : {}
-        http(stacks_url(environment, druid, item[:filename], version:), item[:local_path], headers:)
-        verify!(item)
+        content_range = http(stacks_url(environment, druid, item[:filename], version:), item[:local_path],
+                             headers:, range:)
+        range ? verify_range!(item, range, content_range) : verify!(item)
       rescue NotFound => e
         raise explain_stacks_not_found(environment, druid, item[:filename], e)
       rescue Forbidden => e
@@ -80,6 +84,22 @@ module SdrOps
       raise Error, "#{item[:filename]}: downloaded #{problems.join(', ')}"
     end
 
+    # A ranged download: the bytes written must be the ones asked for, and the whole file's size (from
+    # Content-Range: bytes FIRST-LAST/TOTAL) must match cocina's.
+    def verify_range!(item, range, content_range)
+      total = content_range.to_s[%r{/(\d+)\z}, 1]&.to_i
+      expected = range.length_for(total || item[:size]&.to_i)
+      written = File.size(item[:local_path])
+      problems = []
+      problems << "no usable Content-Range (got #{content_range.inspect})" if total.nil?
+      problems << "a file of #{total} bytes, but cocina says #{item[:size]}" if total && item[:size] && total != item[:size].to_i
+      problems << "#{written} bytes for range #{range} (expected #{expected})" if expected && written != expected
+      return item.merge!(verified: true, bytes: written, content_range:) if problems.empty?
+
+      FileUtils.rm_f(item[:local_path])
+      raise Error, "#{item[:filename]}: downloaded #{problems.join(', ')}"
+    end
+
     def mismatches(item)
       path = item[:local_path]
       problems = { md5: Digest::MD5, sha1: Digest::SHA1 }.filter_map do |key, klass|
@@ -94,16 +114,19 @@ module SdrOps
       problems
     end
 
-    # Headers (e.g. Authorization) are only sent to the original host, never to a redirect elsewhere. A redirect
-    # to stacks' login page means the file needs credentials that weren't sent.
-    def http(url, local_path, headers: {}, redirects: 5)
+    # Headers (e.g. Authorization) are only sent to the original host, never to a redirect elsewhere; a `range:`
+    # (ByteRange) is sent to every hop. A redirect to stacks' login page means the file needs credentials that
+    # weren't sent.
+    #
+    # @return [String, nil] the response's Content-Range header
+    def http(url, local_path, headers: {}, range: nil, redirects: 5)
       uri = URI(url)
       FileUtils.mkdir_p(File.dirname(local_path))
+      request_headers = range ? headers.merge('Range' => range.header) : headers
       Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https') do |http|
-        http.request(Net::HTTP::Get.new(uri, headers)) do |response|
+        http.request(Net::HTTP::Get.new(uri, request_headers)) do |response|
           case response
-          when Net::HTTPSuccess
-            File.open(local_path, 'wb') { |file| response.read_body { |chunk| file.write(chunk) } }
+          when Net::HTTPSuccess then return save_body(response, url, local_path, range)
           when Net::HTTPRedirection
             raise Error, "Too many redirects fetching #{url}" if redirects.zero?
 
@@ -111,13 +134,26 @@ module SdrOps
             raise Forbidden, "#{url} redirected to a login page" if target.path.start_with?('/file/auth/', '/auth/')
 
             same_host = target.host == uri.host
-            return http(target.to_s, local_path, headers: same_host ? headers : {}, redirects: redirects - 1)
+            return http(target.to_s, local_path, headers: same_host ? headers : {}, range:, redirects: redirects - 1)
+          when Net::HTTPRequestedRangeNotSatisfiable
+            raise Error, "#{url}: range #{range} is outside the file (HTTP 416)"
           when Net::HTTPUnauthorized, Net::HTTPForbidden then raise Forbidden, "#{url} returned HTTP #{response.code}"
           when Net::HTTPNotFound then raise NotFound, "#{url} returned HTTP 404"
           else raise Error, "#{url} returned HTTP #{response.code}"
           end
         end
       end
+    end
+
+    # A ranged request must come back 206: a server that ignores Range and answers 200 would send the whole file,
+    # so that's refused before the body is read.
+    def save_body(response, url, local_path, range)
+      if range && !response.is_a?(Net::HTTPPartialContent)
+        raise Error, "#{url} ignored the Range request (HTTP #{response.code}); not downloading the whole file"
+      end
+
+      File.open(local_path, 'wb') { |file| response.read_body { |chunk| file.write(chunk) } }
+      response['Content-Range']
     end
 
     # GET a JSON document. Returns nil for a 404.

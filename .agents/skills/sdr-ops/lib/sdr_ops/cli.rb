@@ -41,6 +41,7 @@ module SdrOps
                  workflow reset WF STEP DRUID... | workflow skip-all WF DRUID... --note TEXT
                  check --until WF[:STEP]:complete DRUID...
       Files:     files fetch DRUID [FILE...] [--source preservation|workspace|stacks] [--version N] [--to DIR]
+                       [--range FIRST-LAST|FIRST-|-COUNT]   (stacks only: just those bytes, e.g. a COG's headers)
                  files add DRUID PATH... [--filename N] [--like FILE | --file-set ID | --new-file-set LABEL] [--mimetype T]
                        [--use U] [--preserve B] [--shelve B] [--publish B] [--access-from-object]
                  files replace DRUID FILE PATH [--mimetype T] | files remove DRUID FILE... [--drop-empty-file-sets]
@@ -426,6 +427,7 @@ module SdrOps
         opts.on('--source SOURCE') { o[:source] = it }
         opts.on('--version N', Integer) { o[:version] = it }
         opts.on('--to DIR') { o[:to] = it }
+        opts.on('--range BYTES', 'stacks only: FIRST-LAST, FIRST- or -COUNT') { o[:range] = it }
       end
       druid = @argv.shift || raise(UsageError, 'files fetch needs a druid')
       each_druid([druid], single: true) { |d| context.files.fetch(d, @argv, **options) }

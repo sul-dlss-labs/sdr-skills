@@ -299,6 +299,71 @@ RSpec.describe SdrOps::Files do
         build_context(dsa:, transport:).files.fetch(druid, ['rail.fgb'], source: 'stacks', to: dl)
         expect(a_request(:get, /stacks/)).not_to have_been_made
       end
+
+      context 'with a byte range' do
+        let(:size) do
+          dsa.record(druid).cocina.structural.contains.flat_map { it.structural.contains }.find { it.filename == 'rail.fgb' }.size
+        end
+
+        it 'requests just those bytes, with the token, and saves them under a name that says so' do
+          part = stub_request(:get, 'https://stacks-stage.stanford.edu/file/bc641kr2427/rail.fgb')
+                 .with(headers: { 'Authorization' => "Bearer #{stacks_token}", 'Range' => 'bytes=0-3' })
+                 .to_return(status: 206, body: 'rail', headers: { 'Content-Range' => "bytes 0-3/#{size}" })
+          context.files.fetch(druid, ['rail.fgb'], source: 'stacks', to: dl, range: '0-3')
+
+          expect(part).to have_been_made
+          expect(File.read(File.join(dl, 'rail.bytes-0-3.fgb'))).to eq 'rail'
+          expect(File).not_to exist(File.join(dl, 'rail.fgb'))
+          report = emitted.last
+          expect(report['args']['range']).to eq '0-3'
+          expect(report['details']['files'].first).to include('range' => '0-3', 'range_bytes' => 4)
+          expect(report['details']['total_bytes']).to eq 4
+          expect(@out.string + @err.string).not_to include(stacks_token)
+        end
+
+        it 'refuses a server that ignores the range, rather than downloading the whole file' do
+          stub_request(:get, 'https://stacks-stage.stanford.edu/file/bc641kr2427/rail.fgb')
+            .to_return(status: 200, body: 'the whole file')
+          expect { context.files.fetch(druid, ['rail.fgb'], source: 'stacks', to: dl, range: '0-3') }
+            .to raise_error(SdrOps::Error, /ignored the Range request \(HTTP 200\)/)
+          expect(Dir.glob(File.join(dl, '*'))).to be_empty
+        end
+
+        it "checks the file's total size against cocina, since there's no md5 to check" do
+          stub_request(:get, 'https://stacks-stage.stanford.edu/file/bc641kr2427/rail.fgb')
+            .to_return(status: 206, body: 'rail', headers: { 'Content-Range' => "bytes 0-3/#{size + 1}" })
+          expect { context.files.fetch(druid, ['rail.fgb'], source: 'stacks', to: dl, range: '0-3') }
+            .to raise_error(SdrOps::Error, /a file of #{size + 1} bytes, but cocina says #{size}/)
+          expect(File).not_to exist(File.join(dl, 'rail.bytes-0-3.fgb'))
+        end
+
+        it 'keeps the range across a redirect to another host, but not the token' do
+          stub_request(:get, 'https://stacks-stage.stanford.edu/file/bc641kr2427/rail.fgb')
+            .to_return(status: 302, headers: { 'Location' => 'https://elsewhere.example.com/rail.fgb' })
+          elsewhere = stub_request(:get, 'https://elsewhere.example.com/rail.fgb')
+                      .with(headers: { 'Range' => 'bytes=-2' }) { !it.headers.key?('Authorization') }
+                      .to_return(status: 206, body: 'gb', headers: { 'Content-Range' => "bytes #{size - 2}-#{size - 1}/#{size}" })
+          context.files.fetch(druid, ['rail.fgb'], source: 'stacks', to: dl, range: '-2')
+          expect(elsewhere).to have_been_made
+          expect(File.read(File.join(dl, 'rail.bytes-last-2.fgb'))).to eq 'gb'
+        end
+
+        it 'plans the byte count in a dry run, without a request' do
+          build_context(dsa:, transport:).files.fetch(druid, ['rail.fgb'], source: 'stacks', to: dl, range: '2-')
+          expect(a_request(:get, /stacks/)).not_to have_been_made
+          expect(emitted.last['details']['files'].first)
+            .to include('range' => '2-', 'range_bytes' => size - 2, 'local_path' => File.join(dl, 'rail.bytes-2-end.fgb'))
+        end
+
+        it 'works only with --source stacks, and only with a well-formed range' do
+          expect { context.files.fetch(druid, ['rail.fgb'], source: 'preservation', range: '0-3') }
+            .to raise_error(SdrOps::UsageError, /only with --source stacks/)
+          %w[abc 5-1 -0].each do |bad|
+            expect { context.files.fetch(druid, ['rail.fgb'], source: 'stacks', to: dl, range: bad) }
+              .to raise_error(SdrOps::UsageError, /--range/)
+          end
+        end
+      end
     end
 
     it 'refuses stacks downloads of files that are location-restricted or not shelved' do

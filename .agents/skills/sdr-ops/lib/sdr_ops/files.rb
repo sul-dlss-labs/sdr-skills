@@ -166,21 +166,24 @@ module SdrOps
     end
 
     # Download files (default: all applicable) for one druid into `to` (default <run>/downloads/<druid>).
-    def fetch(druid, filenames = [], version: nil, source: 'preservation', to: nil)
+    # `range:` (stacks only; "FIRST-LAST", "FIRST-" or "-COUNT" bytes) downloads just that part of each file, e.g.
+    # `range: '0-1048575'` for a COG's headers, saved as <name>.bytes-0-1048575.<ext> next to where the whole file
+    # would go.
+    def fetch(druid, filenames = [], version: nil, source: 'preservation', to: nil, range: nil)
       raise UsageError, "--source must be one of #{FETCH_SOURCES.join(', ')}" unless FETCH_SOURCES.include?(source)
+      raise UsageError, '--range works only with --source stacks' if range && source != 'stacks'
 
+      range &&= ByteRange.parse(range)
       state = @context.state(druid)
       cocina = version ? @context.client.object(state.druid).version.find(version.to_i) : state.cocina
       files = select_files(state.druid, cocina, filenames, source)
       to = File.expand_path(to || File.join(@context.run_dir, 'downloads', Druid.bare(state.druid)))
-      plan = files.map do |f|
-        item = { filename: f.filename, size: f.size, md5: md5_of(f), local_path: local_path(to, f.filename) }
-        source == 'stacks' ? item.merge(stacks_token: f.access.download != 'world') : item
-      end
-      send(:"fetch_from_#{source}", state.druid, files, plan, version) if @context.execute?
+      plan = files.map { |f| fetch_item(f, to, source, range) }
+      send(:"fetch_from_#{source}", state.druid, files, plan, version, range) if @context.execute?
+      total = plan.sum { |item| (range ? item[:range_bytes] : item[:size]).to_i }
       @context.report(druid: state.druid, action: 'files.fetch', result: @context.execute? ? 'ok' : 'planned',
-                      args: { source:, version:, to: },
-                      details: { files: plan, total_bytes: plan.sum { |item| item[:size].to_i } })
+                      args: { source:, version:, to:, range: range&.to_s }.compact,
+                      details: { files: plan, total_bytes: total })
     end
 
     # Cocina access for a new file derived from the object's access (citation-only becomes dark).
@@ -439,12 +442,19 @@ module SdrOps
       file.administrative.shelve && STACKS_DOWNLOADS.include?(file.access.download)
     end
 
-    def fetch_from_preservation(druid, _files, plan, version)
+    def fetch_item(file, to, source, range)
+      path = local_path(to, file.filename)
+      item = { filename: file.filename, size: file.size, md5: md5_of(file), local_path: range ? range.local_path(path) : path }
+      item.merge!(range: range.to_s, range_bytes: range.length_for(file.size)) if range
+      source == 'stacks' ? item.merge(stacks_token: file.access.download != 'world') : item
+    end
+
+    def fetch_from_preservation(druid, _files, plan, version, _range)
       Downloads.from_preservation(transport, profile: @context.host, scratch_dir: @context.scratch_dir, druid:,
                                              items: plan, version:)
     end
 
-    def fetch_from_workspace(druid, _files, plan, _version)
+    def fetch_from_workspace(druid, _files, plan, _version, _range)
       plan.each do |item|
         transport.get_file(@context.host, remote_path: workspace_path(druid, item[:filename]),
                                           local_path: item[:local_path])
@@ -452,9 +462,9 @@ module SdrOps
       end
     end
 
-    def fetch_from_stacks(druid, _files, plan, version)
+    def fetch_from_stacks(druid, _files, plan, version, range)
       token = @context.credentials.stacks_token! if plan.any? { it[:stacks_token] }
-      Downloads.from_stacks(@context.environment, druid, plan, version:, token:)
+      Downloads.from_stacks(@context.environment, druid, plan, version:, token:, range:)
     end
 
     # The bytes for a new or replaced file: a local path or a string.

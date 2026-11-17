@@ -48,6 +48,13 @@
   - `preservation` (default) covers any preserved file in any version; it goes through the workspace host.
   - `workspace` covers files the robots have already staged, e.g. after `fetch-files` ran.
   - `stacks` covers shelved files that are world-downloadable or Stanford-only, as users get them. Stanford-only files need a stacks service token: ask the user to run `sdr-ops --env ENV login --stacks`. Location-restricted and no-download files are refused. This is the way to check derivatives that aren't preserved (e.g. geo `.fgb`/`.pmtiles`) once accessioning has pruned the workspace. Each fetch counts as a download in stacks' metrics. Stacks caches each object's public cocina for 10 minutes, so files from a version published since stacks last served the object can 404 for up to 10 minutes; `files fetch` says so when purl's published version lists the file.
+- `--range BYTES` (stacks only) downloads part of each file with an HTTP Range request.
+  - BYTES uses the Range header's syntax: `FIRST-LAST` (inclusive), `FIRST-` (to the end), or `-COUNT` (the last COUNT bytes).
+  - Use it to inspect a large file without downloading all of it. For example, `--range 0-1048575` gets a COG's first MiB, where GDAL writes the headers and band statistics. `gdalinfo` opens that partial copy; don't use `-stats`, which reads pixel data.
+  - The part is saved as `<name>.bytes-<range>.<ext>`, e.g. `map_cog.bytes-0-1048575.tif`, so it never passes for the whole file.
+  - A part can't be checked against cocina's md5. Instead, the file's total size in stacks' `Content-Range` must match cocina's size, and the byte count must match the range.
+  - If the server ignores the Range header (answers 200 instead of 206), the fetch is refused before any bytes are read, rather than downloading the whole file.
+  - The dry run reports the planned byte count (`range_bytes`, `total_bytes`).
 
 ## File sets
 
